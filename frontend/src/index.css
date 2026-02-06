@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-seade-gray-light text-seade-gray-dark font-sans;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  @apply font-semibold text-seade-blue-dark;
+}

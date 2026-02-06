@@ -1,0 +1,51 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Build/Dist
+dist/
+build/
+*.pyc
+__pycache__/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+env/
+*.egg-info/
+.installed.cfg
+bin/
+include/
+lib/
+share/
+
+# Local Storage/Cache
+backend/storage/
+backend/sql_app.db
+kg-web-platform/backend/storage/
+kg-web-platform/backend/sql_app.db
+frontend/.vercel/
+.cache/
+.pytest_cache/
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Application Logs
+*.log
+logs/
+backend/logs/
+
+# User artifacts
+.gemini/
+.agent/
+brain/
+walkthrough.md
+task.md
+implementation_plan.md
