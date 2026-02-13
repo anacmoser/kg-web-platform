@@ -4,49 +4,91 @@ from openai import OpenAI
 from app.config import settings
 import logging
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 class KGExtractor:
     def __init__(self):
-        self.client = OpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.LLM_BASE_URL
-        )
+        try:
+            # Check if we should verify SSL
+            verify = settings.VERIFY_SSL
+            logger.info(f"Initializing OpenAI client in KGExtractor with VERIFY_SSL={verify}")
+            
+            # Pre-initialize httpx client
+            self.http_client = httpx.Client(verify=verify)
+            
+            self.client = OpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.LLM_BASE_URL,
+                http_client=self.http_client
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI client in KGExtractor: {e}")
+            # Fallback if verify=True failed
+            if settings.VERIFY_SSL:
+                try:
+                    logger.warning("Attempting fallback with verify=False in KGExtractor...")
+                    self.http_client = httpx.Client(verify=False)
+                    self.client = OpenAI(
+                        api_key=settings.OPENAI_API_KEY,
+                        base_url=settings.LLM_BASE_URL,
+                        http_client=self.http_client
+                    )
+                except Exception as e2:
+                    logger.error(f"Critical fallback failed in KGExtractor: {e2}")
+                    raise
+            else:
+                raise
+
         self.model = settings.OPENAI_MODEL
 
-    def extract_triples(self, chunk: Dict[str, Any], ontology: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def extract_triples(self, chunk: Dict[str, Any], ontology: Dict[str, Any], user_instructions: str = "") -> List[Dict[str, Any]]:
         """
-        Extracts triples from a chunk based on the provided ontology.
+        Extracts triples from a chunk based on the provided ontology and user context.
         """
         # Prepare context from ontology
         entities_str = ", ".join([e["name"] for e in ontology.get("entities", [])])
         relations_str = ", ".join([r["label"] for r in ontology.get("relations", [])])
         
+        user_context_block = f"\nINSTRUÇÕES ADICIONAIS DO USUÁRIO:\n{user_instructions}\n" if user_instructions else ""
+
         prompt = f"""
-        Extract Knowledge Graph triples from the text based strictly on the provided schema.
+        VOCÊ É UM ANALISTA FORENSE E ESPECIALISTA EM GRAFOS DE CONHECIMENTO DE CLASSE MUNDIAL.
+        Sua tarefa é extrair triplas semânticas ricas e PROFISSIONAIS do texto abaixo.
+        {user_context_block}
         
-        ALLOWED ENTITY TYPES: {entities_str}
-        ALLOWED RELATIONS: {relations_str}
+        ESQUEMA DE ENTIDADES PERMITIDAS: {entities_str}
+        ESQUEMA DE RELAÇÕES PERMITIDAS: {relations_str}
+
+        DIRETRIZES DE EXTRAÇÃO PROFISSIONAL:
+        1. **Filtro de Ruído (CRÍTICO)**: 
+           - NÃO extraia entidades sem nexo ou inúteis (ex: nomes de diretórios, caminhos de arquivo, extensões como .pdf).
+           - NÃO crie entidades para ANOS isolados (ex: "2023", "2024") a menos que sejam o SUJEITO central de uma métrica.
+           - Evite entidades genéricas como "Banco de Dados" se estiverem apenas descrevendo a infraestrutura técnica irrelevante para o negócio.
+        2. **Hierarquia de Texto**: Identifique títulos (#, ##) e crie relações de "pertence_à_seção" para manter o contexto estrutural.
+        3. **Nexo Semântico**: Cada tripla deve representar um fato de negócio ou técnico real. Conecte as entidades para que o grafo conte a "história" do documento.
+        4. **Análise de Tabelas**: Extraia dados de tabelas markdown com precisão absoluta.
         
-        TEXT:
+        TEXTO PARA ANÁLISE (PARTE DO DOCUMENTO):
         {chunk["text"]}
-        
-        OUTPUT FORMAT (JSON list):
+
+        FORMATO DE SAÍDA (LISTA JSON):
         [
-            {{"source": "Entity Name", "source_type": "TYPE", "target": "Entity Name", "target_type": "TYPE", "relation": "RELATION"}}
+            {{"source": "Nome da Entidade", "source_type": "TIPO", "target": "Nome da Entidade", "target_type": "TIPO", "relation": "RELAÇÃO"}}
         ]
-        
-        Rules:
-        1. Only use allowed types and relations.
-        2. Resolve pronouns where possible.
-        3. Ignore irrelevant information.
+
+        REGRAS DE OURO:
+        - Retorne APENAS o JSON.
+        - Se o texto citar uma metodologia, extraia as etapas como uma sequência.
+        - Use português técnico e PRECISÃO SEMÂNTICA.
         """
         
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a precise Knowledge Graph extractor."},
+                    {"role": "system", "content": "Você é um extrator preciso de Grafos de Conhecimento. Extraia triplas (sujeito, relação, objeto) em PORTUGUÊS, usando o esquema de ontologia fornecido."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0

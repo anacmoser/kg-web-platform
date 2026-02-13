@@ -3,46 +3,73 @@ import json
 from openai import OpenAI
 from app.config import settings
 import logging
+import httpx
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-# Updated prompt with user-requested limits (50 entities, 100 relations)
+# Prompt atualizado para nomes intuitivos em português
 ONTOLOGY_PROMPT = """
-Analyze the following text sample from a document collection and identify the best Ontology schema.
+Analise o seguinte texto e identifique o melhor esquema de Ontologia (Entidades e Relacionamentos). 
+O objetivo é criar um Grafo de Conhecimento que seja claro para pessoas leigas, usando termos em PORTUGUÊS.
 
-1. ENTITIES (max 50 - be comprehensive):
-   - PERSON: Full names, authors, researchers
-   - ORGANIZATION: Institutions, companies
-   - CONCEPT: Diseases, treatments, theories
-   - TERM: Technical terms, genes, molecules
-   - LOCATION: Countries, cities, institutions
-   - DATE: Periods, years, events
-   - ADAPT: Create new types if the domain requires it (e.g. "PROTEIN", "LEGISLATION")
+1. ENTIDADES (máx 50 - seja abrangente):
+   - PESSOA: Nomes completos, autores, pesquisadores.
+   - ORGANIZAÇÃO: Instituições, empresas, grupos.
+   - CONCEITO: Doenças, tratamentos, teorias, ideias abstratas.
+   - TERMO_TÉCNICO: Termos específicos, moléculas, leis, componentes.
+   - LOCAL: Países, cidades, endereços físicos.
+   - EVENTO/DATA: Reuniões, marcos históricos, períodos.
+   - ADAPTE: Crie tipos novos se o domínio exigir (ex: "PROTEÍNA", "PROJETO_DE_LEI").
 
-2. RELATIONS (max 100 - capture nuances):
-   - CAUSAL: causes, leads_to, results_in
-   - ASSOCIATIVE: associated_with, related_to, correlates_with
-   - HIERARCHICAL: is_a, part_of, subclass_of
-   - TEMPORAL: implies, precedes, follows
-   - FUNCTIONAL: treats, targets, regulates, owns
+2. RELACIONAMENTOS (máx 100 - use verbos intuitivos em PORTUGUÊS):
+   - Use nomes como: "pertence_a", "causa", "trabalha_em", "localizado_em", "menciona", "colabora_com", "trata_de".
+   - Evita nomes excessivamente técnicos se houver uma alternativa simples.
 
-FORMAT: JSON only.
+FORMATO: Apenas JSON.
 {
   "entities": [
-    {"name": "TypeName", "description": "Brief description"}
+    {"name": "NomeDoTipo", "description": "Breve descrição em português"}
   ],
   "relations": [
-    {"label": "RELATION_NAME", "source": "TypeName", "target": "TypeName", "description": "..."}
+    {"label": "NOME_DO_RELACIONAMENTO", "source": "NomeDoTipo", "target": "NomeDoTipo", "description": "..."}
   ]
 }
 """
 
 class OntologyBuilder:
     def __init__(self):
-        self.client = OpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.LLM_BASE_URL
-        )
+        try:
+            # Check if we should verify SSL
+            verify = settings.VERIFY_SSL
+            logger.info(f"Initializing OpenAI client with VERIFY_SSL={verify}")
+            
+            # Pre-initialize httpx client to catch/avoid hangs
+            self.http_client = httpx.Client(verify=verify)
+            
+            self.client = OpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.LLM_BASE_URL,
+                http_client=self.http_client
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI client in OntologyBuilder: {e}")
+            # If it failed and we were trying to verify, try one last time without verification
+            if settings.VERIFY_SSL:
+                try:
+                    logger.warning("Attempting fallback with verify=False...")
+                    self.http_client = httpx.Client(verify=False)
+                    self.client = OpenAI(
+                        api_key=settings.OPENAI_API_KEY,
+                        base_url=settings.LLM_BASE_URL,
+                        http_client=self.http_client
+                    )
+                except Exception as e2:
+                    logger.error(f"Critical fallback failed: {e2}")
+                    raise
+            else:
+                raise
+
         self.model = settings.OPENAI_MODEL
 
     def build(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:

@@ -27,13 +27,43 @@ class GraphSerializer:
         nodes = []
         edges = []
         
+        # Detect communities for better coloring
+        try:
+            import networkx.algorithms.community as nx_comm
+            # Use Louvain for better community structure
+            communities = list(nx_comm.louvain_communities(graph, seed=42))
+            
+            # Map node -> community_id
+            community_map = {}
+            for i, comm in enumerate(communities):
+                for node in comm:
+                    community_map[node] = i
+            
+            num_communities = len(communities)
+        except Exception as e:
+            logger.warning(f"Community detection failed: {e}")
+            community_map = {}
+            num_communities = 0
+
+        # Generate vibrant, distinct colors
+        def get_community_color(comm_id, total):
+            if total <= 1: return "#6366f1" # Default Indigo
+            # Use a more spread out hue distribution
+            hue = (comm_id * (360 / max(total, 6))) % 360
+            return f"hsl({hue}, 85%, 55%)"
+
         # Convert nodes
         for node_id, node_data in graph.nodes(data=True):
+            comm_id = community_map.get(node_id, 0)
+            comm_color = get_community_color(comm_id, num_communities)
+            
             node_element = {
                 "data": {
                     "id": str(node_id),
                     "label": str(node_id),
                     "type": node_data.get("type", "Unknown"),
+                    "community": comm_id,
+                    "color": comm_color,
                     "degree": graph.degree(node_id)
                 }
             }
@@ -69,8 +99,25 @@ class GraphSerializer:
     
     def get_graph_stats(self, graph: nx.DiGraph) -> Dict[str, Any]:
         """
-        Extract graph statistics and metadata.
+        Extract graph statistics and metadata including requested indicators.
         """
+        if graph.number_of_nodes() == 0:
+            return {
+                "node_count": 0,
+                "edge_count": 0,
+                "entity_types": {},
+                "relation_types": {},
+                "density": 0.0,
+                "avg_degree": 0.0,
+                "avg_betweenness": 0.0,
+                "avg_property_sparsity": 0.0,
+                "type_consistency": 0.0,
+                "triples_entities_ratio": 0.0,
+                "avg_fan_out": 0.0,
+                "node_importance": {},
+                "is_connected": False
+            }
+
         # Count entity types
         entity_types = {}
         for _, node_data in graph.nodes(data=True):
@@ -82,12 +129,64 @@ class GraphSerializer:
         for _, _, edge_data in graph.edges(data=True):
             relation = edge_data.get("relation", "unknown")
             relation_types[relation] = relation_types.get(relation, 0) + 1
+
+        # 1. Indicadores de Estrutura e Conectividade
+        density = nx.density(graph)
+        num_nodes = graph.number_of_nodes()
+        num_edges = graph.number_of_edges()
+        avg_degree = (2 * num_edges / num_nodes) if num_nodes > 0 else 0
         
+        # Betweenness Centrality (normalized)
+        try:
+            betweenness = nx.betweenness_centrality(graph)
+            avg_betweenness = sum(betweenness.values()) / num_nodes if num_nodes > 0 else 0
+        except:
+            avg_betweenness = 0
+            betweenness = {}
+
+        # 2. Indicadores de Qualidade e Completude
+        # Property Sparsity (Average fill rate of properties per node)
+        # Assuming common properties could be 'type', 'label', and any other keys in data
+        property_counts = {}
+        for _, data in graph.nodes(data=True):
+            for key in data.keys():
+                property_counts[key] = property_counts.get(key, 0) + 1
+        
+        property_sparsity = {k: (v / num_nodes) * 100 for k, v in property_counts.items()}
+        avg_property_sparsity = sum(property_sparsity.values()) / len(property_sparsity) if property_sparsity else 0
+
+        # Type Consistency
+        valid_types_count = sum(1 for _, data in graph.nodes(data=True) if data.get("type") != "Unknown")
+        type_consistency = (valid_types_count / num_nodes) if num_nodes > 0 else 0
+
+        # 3. Indicadores de Semântica e Diversidade
+        triples_entities_ratio = num_edges / num_nodes if num_nodes > 0 else 0
+        
+        # Fan-out Factor (Average Out-degree)
+        out_degrees = dict(graph.out_degree())
+        avg_fan_out = sum(out_degrees.values()) / num_nodes if num_nodes > 0 else 0
+
+        # Node importance (based on degree and betweenness for coloring/sizing)
+        node_importance = {}
+        for node in graph.nodes():
+            # Importance = (normalized degree + normalized betweenness) / 2
+            deg = graph.degree(node)
+            norm_deg = deg / (num_nodes - 1) if num_nodes > 1 else 0
+            bet = betweenness.get(node, 0)
+            node_importance[str(node)] = (norm_deg + bet) / 2
+
         return {
-            "node_count": graph.number_of_nodes(),
-            "edge_count": graph.number_of_edges(),
+            "node_count": num_nodes,
+            "edge_count": num_edges,
             "entity_types": entity_types,
             "relation_types": relation_types,
-            "density": nx.density(graph),
-            "is_connected": nx.is_weakly_connected(graph) if graph.number_of_nodes() > 0 else False
+            "density": density,
+            "avg_degree": avg_degree,
+            "avg_betweenness": avg_betweenness,
+            "avg_property_sparsity": avg_property_sparsity,
+            "type_consistency": type_consistency,
+            "triples_entities_ratio": triples_entities_ratio,
+            "avg_fan_out": avg_fan_out,
+            "node_importance": node_importance,
+            "is_connected": nx.is_weakly_connected(graph) if num_nodes > 0 else False
         }

@@ -6,29 +6,41 @@ import OntologyPage from './pages/OntologyPage';
 
 // Home page
 const Home = () => (
-    <div className="p-8">
-        <h1 className="text-3xl mb-4">SGKG - Sistema Gestor de Knowledge Graphs</h1>
-        <div className="bg-white p-6 rounded-lg shadow-md border-t-4 border-seade-blue-primary">
-            <p className="text-lg mb-4">Bem-vindo à plataforma de gestão de conhecimento.</p>
-            <p className="mb-4">Transform heterogeneous documents (PDF, CSV, DOCX) into interactive knowledge graphs.</p>
+    <div className="max-w-6xl mx-auto px-4 py-16">
+        <div className="text-center mb-16">
+            <h1 className="text-5xl md:text-6xl font-extrabold mb-6 tracking-tight">
+                Plataforma <span className="gradient-text">SGKG</span>
+            </h1>
+            <p className="text-xl text-seade-gray-dark max-w-2xl mx-auto leading-relaxed">
+                Transforme documentos complexos em Grafos de Conhecimento interativos e intuitivos com inteligência artificial de ponta.
+            </p>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                <a href="/upload" className="block p-6 bg-seade-blue-light text-white rounded-lg hover:bg-seade-blue-primary transition-colors">
-                    <div className="text-4xl mb-2">📤</div>
-                    <h3 className="font-bold text-lg">Upload Documents</h3>
-                    <p className="text-sm mt-2">Upload PDF, CSV, or DOCX files to extract knowledge</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="group relative">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-brand-primary to-brand-accent rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                <a href="/upload" className="relative block h-full p-8 bg-white rounded-2xl shadow-premium hover:translate-y-[-4px] transition-all duration-300">
+                    <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform">📤</div>
+                    <h3 className="text-2xl font-bold mb-3">Upload de Documentos</h3>
+                    <p className="text-seade-gray-dark leading-relaxed">Envie PDFs, CSVs ou textos para extração automática de conhecimento.</p>
                 </a>
+            </div>
 
-                <a href="/visualize" className="block p-6 bg-seade-blue-light text-white rounded-lg hover:bg-seade-blue-primary transition-colors">
-                    <div className="text-4xl mb-2">🔍</div>
-                    <h3 className="font-bold text-lg">Visualize Graphs</h3>
-                    <p className="text-sm mt-2">Explore interactive knowledge graph visualizations</p>
+            <div className="group relative">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-brand-primary to-brand-accent rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                <a href="/visualize" className="relative block h-full p-8 bg-white rounded-2xl shadow-premium hover:translate-y-[-4px] transition-all duration-300">
+                    <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform">🔍</div>
+                    <h3 className="text-2xl font-bold mb-3">Visualizar Grafos</h3>
+                    <p className="text-seade-gray-dark leading-relaxed">Explore conexões e relacionamentos em uma visualização interativa premium.</p>
                 </a>
+            </div>
 
-                <a href="/ontology" className="block p-6 bg-seade-blue-light text-white rounded-lg hover:bg-seade-blue-primary transition-colors">
-                    <div className="text-4xl mb-2">🧠</div>
-                    <h3 className="font-bold text-lg">View Ontology</h3>
-                    <p className="text-sm mt-2">Review entity types and relation schemas</p>
+            <div className="group relative">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-brand-primary to-brand-accent rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                <a href="/ontology" className="relative block h-full p-8 bg-white rounded-2xl shadow-premium hover:translate-y-[-4px] transition-all duration-300">
+                    <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform">🧠</div>
+                    <h3 className="text-2xl font-bold mb-3">Ontologia</h3>
+                    <p className="text-seade-gray-dark leading-relaxed">Gerencie o esquema de entidades e tipos de relacionamentos do sistema.</p>
                 </a>
             </div>
         </div>
@@ -37,18 +49,27 @@ const Home = () => (
 
 function App() {
     return (
-        <div className="min-h-screen bg-seade-gray-light">
-            <nav className="bg-seade-blue-dark text-white p-4 shadow-lg">
-                <div className="container mx-auto flex justify-between items-center">
-                    <div className="text-xl font-bold">SGKG Platform</div>
-                    <div className="space-x-4">
-                        <a href="/" className="hover:text-seade-blue-light">Home</a>
-                        <a href="/upload" className="hover:text-seade-blue-light">Upload</a>
-                        <a href="/visualize" className="hover:text-seade-blue-light">Visualize</a>
-                        <a href="/ontology" className="hover:text-seade-blue-light">Ontology</a>
-                    </div>
+        <div className="min-h-screen bg-seade-gray-light selection:bg-brand-primary/20 selection:text-brand-primary">
+            <header className="sticky top-0 z-50 glass-morphism border-b border-gray-200">
+                <div className="container mx-auto px-6 h-20 flex justify-between items-center">
+                    <a href="/" className="flex items-center space-x-2">
+                        <div className="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center text-white font-bold text-xl">SG</div>
+                        <span className="text-xl font-bold tracking-tight text-brand-surface group">
+                            KG <span className="text-brand-primary transition-colors">Platform</span>
+                        </span>
+                    </a>
+
+                    <nav className="hidden md:flex items-center space-x-8">
+                        <a href="/" className="text-sm font-medium text-seade-gray-dark hover:text-brand-primary transition-colors">Início</a>
+                        <a href="/upload" className="text-sm font-medium text-seade-gray-dark hover:text-brand-primary transition-colors">Upload</a>
+                        <a href="/visualize" className="text-sm font-medium text-seade-gray-dark hover:text-brand-primary transition-colors">Visualizar</a>
+                        <a href="/ontology" className="text-sm font-medium text-seade-gray-dark hover:text-brand-primary transition-colors">Ontologia</a>
+                        <button className="bg-brand-primary text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-brand-secondary transition-all shadow-lg shadow-indigo-200 active:scale-95">
+                            Conectar
+                        </button>
+                    </nav>
                 </div>
-            </nav>
+            </header>
 
             <main>
                 <Switch>
@@ -56,7 +77,12 @@ function App() {
                     <Route path="/upload" component={UploadPage} />
                     <Route path="/visualize" component={VisualizePage} />
                     <Route path="/ontology" component={OntologyPage} />
-                    <Route>404: Page Not Found</Route>
+                    <Route>
+                        <div className="flex flex-col items-center justify-center h-[70vh]">
+                            <h2 className="text-4xl font-bold mb-4">404: Página não encontrada</h2>
+                            <a href="/" className="text-brand-primary underline">Voltar para o início</a>
+                        </div>
+                    </Route>
                 </Switch>
             </main>
         </div>

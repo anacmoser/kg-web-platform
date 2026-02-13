@@ -10,6 +10,8 @@ A web-based platform for transforming heterogeneous documents (PDF, CSV, DOCX) i
 - **Ontology Viewer**: Review and understand extracted entity types and relations
 - **Real-time Progress**: WebSocket-based pipeline status updates
 - **Caching**: 7-day TTL cache for efficient reprocessing
+- **Local TTS (Kokoro-82M)**: Free, high-quality local voice generation (zero cost)
+- **Financial Dashboard**: Track API usage costs and savings in real-time
 
 ## Architecture
 
@@ -69,6 +71,9 @@ pip install -r requirements.txt
 # Create .env file
 copy .env.example .env
 # Edit .env and add your OPENAI_API_KEY
+
+# Download TTS Models (Required for Local Voice)
+# Download kokoro-v1.0.onnx and voices.bin from releases and place in backend/
 ```
 
 ### 3. Frontend Setup

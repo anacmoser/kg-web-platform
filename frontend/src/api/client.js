@@ -6,17 +6,30 @@ class APIClient {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch(`${API_BASE_URL}/documents/upload`, {
-            method: 'POST',
-            body: formData,
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Upload failed');
+        try {
+            const response = await fetch(`${API_BASE_URL}/documents/upload`, {
+                method: 'POST',
+                body: formData,
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Upload failed');
+            }
+
+            return response.json();
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('Upload request timed out. Check if backend is running.');
+            }
+            throw error;
         }
-
-        return response.json();
     }
 
     async listDocuments() {
@@ -58,6 +71,55 @@ class APIClient {
     async getOntology(jobId) {
         const response = await fetch(`${API_BASE_URL}/ontology/${jobId}`);
         if (!response.ok) throw new Error('Failed to fetch ontology');
+        return response.json();
+    }
+
+    async clearRepository() {
+        const response = await fetch(`${API_BASE_URL}/documents/clear`, {
+            method: 'POST',
+        });
+        if (!response.ok) throw new Error('Failed to clear repository');
+        return response.json();
+    }
+
+    async nadiaChat(jobId, messages, graphData = null, voiceMode = 'premium') {
+        const body = { job_id: jobId, messages, voice_mode: voiceMode };
+        if (graphData) {
+            // graphData has structure: { graph: { elements: ... }, stats: ... }
+            // Backend expects: { cytoscape: { elements: ... }, stats: ... }
+            body.cytoscape = graphData.graph;
+            body.stats = graphData.stats;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/nadia/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            let errorMsg = 'Falha na comunicação com a Nadia';
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg += `: ${errorData.error}`;
+            } catch (e) {
+                // Ignore json parse error
+            }
+            throw new Error(errorMsg);
+        }
+        return response.json();
+    }
+
+    async nadiaAudio(text, voiceMode = 'premium') {
+        return fetch(`${API_BASE_URL}/nadia/audio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice_mode: voiceMode }),
+        });
+    }
+
+    async getNadiaUsage() {
+        const response = await fetch(`${API_BASE_URL}/nadia/usage`);
+        if (!response.ok) throw new Error('Failed to fetch usage stats');
         return response.json();
     }
 }

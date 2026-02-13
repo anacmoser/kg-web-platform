@@ -31,3 +31,39 @@ def get_graph(job_id):
         "stats": graph_stats
     })
 
+@bp.route("/", methods=["GET"])
+def list_jobs():
+    """
+    List all persisted jobs with metadata.
+    """
+    from app.config import settings
+    import json
+    import os
+    
+    jobs = []
+    try:
+        if settings.RESULTS_DIR.exists():
+            for f in settings.RESULTS_DIR.glob("*.json"):
+                try:
+                    stats_args = f.stat()
+                    # Read minimal metadata
+                    with open(f, 'r', encoding='utf-8') as jf:
+                        data = json.load(jf)
+                        
+                    jobs.append({
+                        "id": data.get("id", f.stem),
+                        "status": data.get("status", "unknown"),
+                        "date": stats_args.st_mtime,
+                        "filenames": data.get("filenames", ["Unknown Document"]),
+                        "node_count": data.get("results", {}).get("graph_stats", {}).get("node_count", 0),
+                        "edge_count": data.get("results", {}).get("graph_stats", {}).get("edge_count", 0)
+                    })
+                except Exception as e:
+                    # Skip corrupted files
+                    continue
+                    
+        # Sort by date desc
+        jobs.sort(key=lambda x: x["date"], reverse=True)
+        return jsonify(jobs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

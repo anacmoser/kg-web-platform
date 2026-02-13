@@ -15,42 +15,55 @@ class NormalizationStage:
 
     def normalize(self, triples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Groups similar entities and updates triples.
+        Groups similar entities and updates triples, considering entity types.
         """
         if not triples:
             return []
             
         logger.info(f"Normalizing {len(triples)} triples...")
         
-        # 1. Collect all unique entity names
-        entities = set()
+        # 1. Collect all unique entity names and their types
+        entity_info = {} # name -> set of types
         for t in triples:
-            entities.add(t["source"])
-            entities.add(t["target"])
+            for side, type_side in [("source", "source_type"), ("target", "target_type")]:
+                name = t[side]
+                etype = t.get(type_side, "UNKNOWN")
+                if name not in entity_info:
+                    entity_info[name] = set()
+                entity_info[name].add(etype)
             
-        entity_list = sorted(list(entities))
+        entity_list = sorted(list(entity_info.keys()))
         canonical_map = {}
         
-        # 2. Simple Entity Resolution
-        # We iterate and find clusters of similar names
+        # 2. Entity Resolution with Type Awareness
         processed = set()
         for entity in entity_list:
             if entity in processed:
                 continue
                 
-            # Find similar names that haven't been mapped yet
+            # Find similar names
             matches = process.extract(
                 entity, 
                 [e for e in entity_list if e not in processed], 
                 scorer=fuzz.WRatio, 
-                limit=10
+                limit=15
             )
             
-            # Group them under the first (usually shortest or first alphabetical) name
+            # Group them under the first name if types are compatible
+            entity_types = entity_info[entity]
+            
             for match_name, score, _ in matches:
                 if score >= self.threshold:
-                    canonical_map[match_name] = entity
-                    processed.add(match_name)
+                    match_types = entity_info[match_name]
+                    
+                    # Compatibility check: types must overlap or one must be UNKNOWN
+                    # Exception: If they explicitly have different major types (e.g. PERSON vs ORG), don't merge.
+                    common_types = entity_types.intersection(match_types)
+                    is_compatible = len(common_types) > 0 or "UNKNOWN" in entity_types or "UNKNOWN" in match_types
+                    
+                    if is_compatible:
+                        canonical_map[match_name] = entity
+                        processed.add(match_name)
         
         # 3. Update triples with canonical names
         normalized_triples = []

@@ -49,3 +49,10 @@ brain/
 walkthrough.md
 task.md
 implementation_plan.md
+
+# Large Model Files
+backend/*.onnx
+backend/voices.bin
+backend/voices.json
+backend/*.wav
+backend/usage.json

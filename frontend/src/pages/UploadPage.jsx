@@ -11,6 +11,8 @@ const UploadPage = () => {
     const [jobStatus, setJobStatus] = useState(null);
     const [selectedFilenames, setSelectedFilenames] = useState([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [analyzeImages, setAnalyzeImages] = useState(false);
+    const [userInstructions, setUserInstructions] = useState('');
 
     useEffect(() => {
         loadDocuments();
@@ -26,7 +28,7 @@ const UploadPage = () => {
                         clearInterval(interval);
                     }
                 } catch (err) {
-                    console.error('Failed to fetch job status:', err);
+                    console.error('Falha ao obter status do trabalho:', err);
                 }
             }, 2000);
             return () => clearInterval(interval);
@@ -38,7 +40,7 @@ const UploadPage = () => {
             const docs = await api.listDocuments();
             setUploadedFiles(docs);
         } catch (err) {
-            console.error('Failed to load documents:', err);
+            console.error('Falha ao carregar documentos:', err);
         }
     };
 
@@ -61,23 +63,20 @@ const UploadPage = () => {
     const handleFileSelect = (e) => {
         const selectedFiles = Array.from(e.target.files);
         handleFiles(selectedFiles);
-        // Reset input so the same file can be selected again if removed
         e.target.value = '';
     };
 
     const handleFiles = (newFiles) => {
         const validFiles = newFiles.filter(f =>
-            ['application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(f.type) ||
             f.name.toLowerCase().endsWith('.csv') ||
             f.name.toLowerCase().endsWith('.pdf') ||
             f.name.toLowerCase().endsWith('.docx')
         );
 
         if (validFiles.length !== newFiles.length) {
-            setError('Some files were skipped. Only PDF, CSV, and DOCX files are supported.');
+            setError('Alguns arquivos foram ignorados. Apenas PDF, CSV e DOCX são suportados.');
         }
 
-        // Avoid adding the same file multiple times by comparing name and size
         setFiles(prev => {
             const existingNames = new Set(prev.map(f => f.name + f.size));
             const uniqueNew = validFiles.filter(f => !existingNames.has(f.name + f.size));
@@ -103,7 +102,7 @@ const UploadPage = () => {
             setSelectedFilenames(prev => [...new Set([...prev, ...newlyUploadedNames])]);
             setFiles([]);
         } catch (err) {
-            setError(err.message);
+            setError(err.message || 'Erro ao carregar documentos.');
         } finally {
             setUploading(false);
         }
@@ -111,13 +110,20 @@ const UploadPage = () => {
 
     const startPipeline = async () => {
         if (selectedFilenames.length === 0) {
-            setError('Please select at least one document to process.');
+            setError('Por favor, selecione pelo menos um documento para processar.');
             return;
         }
 
         setError(null);
         try {
-            const result = await api.startPipeline(selectedFilenames);
+            // We need to pass analyze_images in the startPipeline call if we want it used there,
+            // or confirm if it's passed during upload.
+            // Based on previous edits, the orchestrator needs config in start_job.
+            // So we send it here if the backend route supports it.
+            const result = await api.startPipeline(selectedFilenames, {
+                analyze_images: analyzeImages,
+                user_instructions: userInstructions
+            });
             setJobId(result.job_id);
             setJobStatus({ status: result.status, progress: 0 });
         } catch (err) {
@@ -133,12 +139,21 @@ const UploadPage = () => {
         );
     };
 
-    const selectAll = () => {
-        setSelectedFilenames(uploadedFiles.map(f => f.name));
-    };
+    const selectAll = () => setSelectedFilenames(uploadedFiles.map(f => f.name));
+    const deselectAll = () => setSelectedFilenames([]);
 
-    const deselectAll = () => {
-        setSelectedFilenames([]);
+    const handleClearRepository = async () => {
+        if (window.confirm('Tem certeza que deseja limpar todo o repositório e o cache?')) {
+            try {
+                await api.clearRepository();
+                setUploadedFiles([]);
+                setSelectedFilenames([]);
+                setJobId(null);
+                setJobStatus(null);
+            } catch (err) {
+                setError('Falha ao limpar o repositório: ' + err.message);
+            }
+        }
     };
 
     const formatFileSize = (bytes) => {
@@ -148,174 +163,249 @@ const UploadPage = () => {
     };
 
     return (
-        <div className="p-8 max-w-4xl mx-auto">
-            <h1 className="text-3xl mb-6">Upload Documents</h1>
+        <div className="max-w-5xl mx-auto px-6 py-12">
+            <header className="mb-10">
+                <h1 className="text-4xl font-display font-extrabold text-brand-surface tracking-tight mb-2">
+                    Central de <span className="gradient-text">Conhecimento</span>
+                </h1>
+                <p className="text-brand-muted">Envie e processe seus documentos para mapear relacionamentos estratégicos.</p>
+            </header>
 
             <ErrorAlert message={error} onDismiss={() => setError(null)} />
 
-            {/* Upload Zone */}
-            <div
-                className={`border-2 border-dashed rounded-lg p-12 text-center mb-6 transition-colors ${isDragging ? 'border-seade-blue-primary bg-blue-50' : 'border-seade-gray-medium'
-                    }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-            >
-                <div className="text-6xl mb-4">📁</div>
-                <p className="text-lg mb-2">Drag & drop files here</p>
-                <p className="text-sm text-seade-gray-dark mb-4">or click to browse</p>
-                <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.csv,.docx"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    id="file-input"
-                />
-                <label
-                    htmlFor="file-input"
-                    className="inline-block bg-seade-blue-primary text-white px-6 py-2 rounded cursor-pointer hover:bg-seade-blue-dark transition-colors"
-                >
-                    Browse Files
-                </label>
-                <p className="text-xs text-seade-gray-dark mt-4">Supported: PDF, CSV, DOCX</p>
-            </div>
-
-            {/* Pending Files */}
-            {files.length > 0 && (
-                <div className="mb-6">
-                    <h3 className="text-lg font-semibold mb-3">Pending Upload:</h3>
-                    <div className="space-y-2">
-                        {files.map((file, idx) => (
-                            <div key={idx} className="flex items-center justify-between bg-gray-50 p-3 rounded">
-                                <div className="flex flex-col">
-                                    <span className="font-medium">{file.name}</span>
-                                    <span className="text-xs text-seade-gray-dark">{formatFileSize(file.size)}</span>
-                                </div>
-                                <button
-                                    onClick={() => removeFile(idx)}
-                                    className="text-red-500 hover:text-red-700 p-1"
-                                    title="Remove file"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                    <button
-                        onClick={uploadFiles}
-                        disabled={uploading}
-                        className="mt-4 bg-seade-blue-primary text-white px-6 py-2 rounded hover:bg-seade-blue-dark disabled:bg-gray-400 transition-colors"
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                {/* Coluna Esquerda: Upload */}
+                <div className="lg:col-span-12">
+                    <div
+                        className={`group relative border-2 border-dashed rounded-3xl p-16 text-center transition-all duration-300 ${isDragging ? 'border-brand-primary bg-indigo-50/50 scale-[1.01]' : 'border-slate-200 bg-white hover:border-brand-primary/50'
+                            }`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
                     >
-                        {uploading ? 'Uploading...' : 'Upload Files'}
-                    </button>
-                </div>
-            )}
+                        <div className="text-7xl mb-6 group-hover:scale-110 transition-transform duration-500">📄</div>
+                        <p className="text-xl font-bold text-brand-surface mb-2 tracking-tight">Arraste e solte seus documentos</p>
+                        <p className="text-brand-muted mb-8">Formatos suportados: PDF, CSV e DOCX</p>
 
-            {/* Uploaded Files */}
-            <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-lg font-semibold">Uploaded Documents:</h3>
-                    {uploadedFiles.length > 0 && (
-                        <div className="space-x-2 text-sm">
-                            <button onClick={selectAll} className="text-seade-blue-primary hover:underline">Select All</button>
-                            <span className="text-seade-gray-medium">|</span>
-                            <button onClick={deselectAll} className="text-seade-blue-primary hover:underline">Deselect All</button>
-                        </div>
-                    )}
+                        <input
+                            type="file"
+                            multiple
+                            accept=".pdf,.csv,.docx"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                            id="file-input"
+                        />
+                        <label
+                            htmlFor="file-input"
+                            className="inline-flex items-center space-x-2 bg-brand-surface text-white px-8 py-3.5 rounded-2xl font-bold cursor-pointer hover:bg-black transition-all shadow-xl active:scale-95"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                            <span>Selecionar Arquivos</span>
+                        </label>
+                    </div>
                 </div>
 
-                {uploadedFiles.length === 0 ? (
-                    <p className="text-seade-gray-dark">No documents uploaded yet.</p>
-                ) : (
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                        {uploadedFiles.map((file, idx) => (
-                            <div
-                                key={idx}
-                                className={`flex items-center justify-between p-3 rounded shadow transition-colors cursor-pointer ${selectedFilenames.includes(file.name) ? 'bg-blue-50 border-l-4 border-seade-blue-primary' : 'bg-white'
-                                    }`}
-                                onClick={() => toggleFileSelection(file.name)}
-                            >
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedFilenames.includes(file.name)}
-                                        onChange={() => { }} // Handled by div onClick
-                                        className="mr-3 h-4 w-4 text-seade-blue-primary rounded"
-                                    />
-                                    <span className="font-medium">{file.name}</span>
+                {/* Coluna Meio: Fila de Upload e Documentos */}
+                <div className="lg:col-span-7 space-y-8">
+                    {/* Fila de Upload */}
+                    {files.length > 0 && (
+                        <section className="animate-in fade-in slide-in-from-left duration-500">
+                            <div className="bg-white rounded-3xl shadow-premium border border-slate-100 overflow-hidden">
+                                <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Aguardando Envio</h3>
+                                    <span className="bg-brand-primary/10 text-brand-primary text-[10px] font-bold px-2 py-0.5 rounded-full">{files.length}</span>
                                 </div>
-                                <span className="text-sm text-seade-gray-dark">{formatFileSize(file.size)}</span>
+                                <div className="p-2 space-y-1">
+                                    {files.map((file, idx) => (
+                                        <div key={idx} className="flex items-center justify-between hover:bg-slate-50 p-4 rounded-2xl transition-colors group">
+                                            <div className="flex items-center space-x-4">
+                                                <div className="w-10 h-10 bg-indigo-50 text-brand-primary rounded-xl flex items-center justify-center text-lg">📄</div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-bold text-slate-700 truncate max-w-[200px]">{file.name}</span>
+                                                    <span className="text-xs text-slate-400 font-mono tracking-tighter">{formatFileSize(file.size)}</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => removeFile(idx)}
+                                                className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-all p-2"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-4 bg-slate-50/50">
+                                    <button
+                                        onClick={uploadFiles}
+                                        disabled={uploading}
+                                        className="w-full bg-brand-primary text-white py-3.5 rounded-2xl font-bold hover:bg-brand-secondary disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-lg active:scale-95"
+                                    >
+                                        {uploading ? (
+                                            <div className="flex items-center justify-center space-x-2">
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                <span>Enviando...</span>
+                                            </div>
+                                        ) : 'Fazer Upload Agora'}
+                                    </button>
+                                </div>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                        </section>
+                    )}
 
-            {/* Start Pipeline Button */}
-            <button
-                onClick={startPipeline}
-                disabled={selectedFilenames.length === 0 || (jobStatus && jobStatus.status === 'processing')}
-                className="w-full bg-seade-blue-primary text-white px-6 py-3 rounded-lg text-lg font-semibold hover:bg-seade-blue-dark disabled:bg-gray-400 transition-colors shadow-lg"
-            >
-                {selectedFilenames.length > 0
-                    ? `Start Extraction (${selectedFilenames.length} files)`
-                    : 'Select files to start extraction'
-                }
-            </button>
-
-            {/* Job Status */}
-            {jobStatus && (
-                <div className="mt-6 bg-white p-6 rounded-lg shadow">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold">Pipeline Status</h3>
-                        <JobStatusBadge status={jobStatus.status} />
-                    </div>
-
-                    <ProgressBar progress={jobStatus.progress || 0} status={jobStatus.status} />
-
-                    {jobStatus.current_stage && (
-                        <div className="flex flex-col space-y-1 mb-3">
-                            <p className="text-sm text-seade-gray-dark">
-                                Current stage: <span className="font-semibold">{jobStatus.current_stage}</span>
-                            </p>
-                            {jobStatus.usage && (
-                                <div className="mt-2 p-3 bg-green-50 rounded border border-green-200 flex justify-between items-center">
-                                    <div className="flex flex-col">
-                                        <span className="text-xs text-seade-gray-dark uppercase tracking-wider font-semibold">Consumo de Tokens</span>
-                                        <span className="text-lg font-mono text-seade-blue-dark">
-                                            {(jobStatus.usage.input_tokens + jobStatus.usage.output_tokens).toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-col items-end">
-                                        <span className="text-xs text-seade-gray-dark uppercase tracking-wider font-semibold">Custo Estimado</span>
-                                        <span className="text-xl font-bold text-green-600">
-                                            ${jobStatus.usage.total_cost.toFixed(4)}
-                                        </span>
-                                    </div>
+                    {/* Documentos Carregados */}
+                    <section className="bg-white rounded-3xl shadow-premium border border-slate-100 overflow-hidden">
+                        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Repositório</h3>
+                            {uploadedFiles.length > 0 && (
+                                <div className="flex space-x-4">
+                                    <button onClick={selectAll} className="text-[10px] font-bold text-brand-primary hover:underline uppercase tracking-wider">Selecionar Todos</button>
+                                    <button onClick={deselectAll} className="text-[10px] font-bold text-slate-400 hover:underline uppercase tracking-wider">Limpar Seleção</button>
+                                    <button onClick={handleClearRepository} className="text-[10px] font-bold text-rose-400 hover:underline uppercase tracking-wider">Limpar Repositório</button>
                                 </div>
                             )}
                         </div>
-                    )}
 
-                    {jobStatus.status === 'completed' && (
-                        <div className="mt-4">
-                            <a
-                                href={`/visualize?job=${jobId}`}
-                                className="inline-block bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition-colors"
-                            >
-                                View Knowledge Graph →
-                            </a>
+                        <div className="p-2 max-h-[440px] overflow-y-auto custom-scrollbar">
+                            {uploadedFiles.length === 0 ? (
+                                <div className="p-12 text-center">
+                                    <div className="text-4xl mb-4 grayscale opacity-30">📭</div>
+                                    <p className="text-sm font-medium text-slate-400 italic">Nenhum documento disponível ainda.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-1">
+                                    {uploadedFiles.map((file, idx) => (
+                                        <div
+                                            key={idx}
+                                            className={`flex items-center justify-between p-4 rounded-2xl transition-all cursor-pointer group ${selectedFilenames.includes(file.name) ? 'bg-indigo-50/60 ring-1 ring-brand-primary/20' : 'hover:bg-slate-50'}`}
+                                            onClick={() => toggleFileSelection(file.name)}
+                                        >
+                                            <div className="flex items-center space-x-4">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold transition-all ${selectedFilenames.includes(file.name) ? 'bg-brand-primary text-white rotate-6 scale-110 shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
+                                                    {selectedFilenames.includes(file.name) ? '✓' : 'DOC'}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className={`text-sm font-bold transition-colors ${selectedFilenames.includes(file.name) ? 'text-brand-primary' : 'text-slate-700'}`}>{file.name}</span>
+                                                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-tighter italic">{formatFileSize(file.size)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="w-5 h-5 rounded-full border-2 border-slate-200 flex items-center justify-center group-hover:border-brand-primary transition-all">
+                                                {selectedFilenames.includes(file.name) && <div className="w-2.5 h-2.5 bg-brand-primary rounded-full animate-in zoom-in duration-300"></div>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    )}
-
-                    {jobStatus.error && (
-                        <div className="mt-4 text-red-600">
-                            Error: {jobStatus.error}
-                        </div>
-                    )}
+                    </section>
                 </div>
-            )}
+
+                {/* Coluna Direita: Status e Ação */}
+                <div className="lg:col-span-5 space-y-6">
+                    <div className="sticky top-28 space-y-6">
+                        {/* Botão de Extração */}
+                        <div className="p-2 bg-white rounded-[32px] shadow-premium border border-slate-100">
+                            <div className="flex items-center space-x-2 mb-4 px-4 pt-2">
+                                <input
+                                    type="checkbox"
+                                    id="analyzeImages"
+                                    checked={analyzeImages}
+                                    onChange={(e) => setAnalyzeImages(e.target.checked)}
+                                    className="w-4 h-4 text-brand-primary border-slate-300 rounded focus:ring-brand-primary cursor-pointer"
+                                />
+                                <label htmlFor="analyzeImages" className="text-sm font-bold text-slate-600 select-none cursor-pointer hover:text-brand-primary transition-colors">
+                                    Processar Imagens e Gráficos (IA Vision)
+                                </label>
+                            </div>
+
+                            <div className="px-4 pb-4">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Instruções de Mapeamento (Opcional)</label>
+                                <textarea
+                                    value={userInstructions}
+                                    onChange={(e) => setUserInstructions(e.target.value)}
+                                    placeholder="Ex: 'Foque em entidades do tipo Local e Data' ou 'Ignore menções a leis específicas'..."
+                                    className="w-full h-24 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all font-medium resize-none"
+                                />
+                            </div>
+
+                            <button
+                                onClick={startPipeline}
+                                disabled={selectedFilenames.length === 0 || (jobStatus && jobStatus.status === 'processing')}
+                                className="w-full relative group overflow-hidden bg-brand-surface text-white p-6 rounded-[28px] font-bold text-xl hover:bg-black disabled:bg-slate-100 disabled:text-slate-400 transition-all shadow-2xl active:scale-[0.98] disabled:shadow-none"
+                            >
+                                <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-brand-primary to-brand-accent transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-500"></div>
+                                <div className="flex flex-col items-center">
+                                    <span className="mb-1 uppercase text-[10px] tracking-[0.2em] font-extrabold text-indigo-400/80 group-disabled:hidden">Inteligência Ativa</span>
+                                    <span>
+                                        {selectedFilenames.length > 0
+                                            ? `Mapear ${selectedFilenames.length} Documentos`
+                                            : 'Selecionar para Mapear'
+                                        }
+                                    </span>
+                                </div>
+                            </button>
+                        </div>
+
+                        {/* Status do Job */}
+                        {jobStatus && (
+                            <div className="bg-white rounded-3xl shadow-premium border border-slate-100 overflow-hidden animate-in slide-in-from-right duration-500">
+                                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                    <h3 className="font-display font-bold text-slate-800">Status da Operação</h3>
+                                    <JobStatusBadge status={jobStatus.status} />
+                                </div>
+
+                                <div className="p-6 space-y-6">
+                                    <ProgressBar progress={jobStatus.progress || 0} status={jobStatus.status} />
+
+                                    {jobStatus.current_stage && (
+                                        <div className="bg-indigo-50/40 rounded-2xl p-4 border border-indigo-100/50">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="w-2 h-2 bg-brand-primary rounded-full animate-ping"></div>
+                                                    <span className="text-[10px] uppercase font-bold text-brand-muted tracking-widest">Etapa Atual</span>
+                                                </div>
+                                                {jobStatus.estimated_total_time && jobStatus.status === 'processing' && (
+                                                    <span className="text-[10px] font-bold text-brand-primary/60">
+                                                        Tempo Restante: {Math.max(0, Math.round(jobStatus.estimated_total_time * (1 - jobStatus.progress)))}s
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-lg font-display font-bold text-brand-primary capitalize">{jobStatus.current_stage}</p>
+                                        </div>
+                                    )}
+
+                                    {jobStatus.usage && (
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div className="p-5 bg-emerald-50/40 rounded-2xl border border-emerald-100/50 flex flex-col items-center text-center">
+                                                <span className="text-[10px] uppercase font-bold text-emerald-600/60 tracking-widest mb-1">Custo Estimado</span>
+                                                <span className="text-3xl font-display font-black text-emerald-600">${jobStatus.usage.total_cost.toFixed(4)}</span>
+                                                <span className="mt-2 text-[10px] font-bold text-emerald-600/40 uppercase tracking-tighter">
+                                                    {(jobStatus.usage.input_tokens + jobStatus.usage.output_tokens).toLocaleString()} tokens processados
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {jobStatus.status === 'completed' && (
+                                        <a
+                                            href={`/visualize?job=${jobId}`}
+                                            className="block w-full text-center bg-emerald-500 text-white py-4 rounded-2xl font-bold text-lg hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-100 animate-bounce-short"
+                                        >
+                                            Explorar Grafo →
+                                        </a>
+                                    )}
+
+                                    {jobStatus.error && (
+                                        <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100">
+                                            <p className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-1">Erro no Processamento</p>
+                                            <p className="text-sm text-rose-700 font-medium">{jobStatus.error}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
