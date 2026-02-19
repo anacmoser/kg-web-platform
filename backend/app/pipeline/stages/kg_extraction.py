@@ -3,29 +3,24 @@ import json
 from openai import OpenAI
 from app.config import settings
 import logging
-
 import httpx
 
 logger = logging.getLogger(__name__)
 
+
 class KGExtractor:
     def __init__(self):
         try:
-            # Check if we should verify SSL
             verify = settings.VERIFY_SSL
-            logger.info(f"Initializing OpenAI client in KGExtractor with VERIFY_SSL={verify}")
-            
-            # Pre-initialize httpx client
+            logger.info(f"Initializing KGExtractor with VERIFY_SSL={verify}")
             self.http_client = httpx.Client(verify=verify)
-            
             self.client = OpenAI(
                 api_key=settings.OPENAI_API_KEY,
                 base_url=settings.LLM_BASE_URL,
                 http_client=self.http_client
             )
         except Exception as e:
-            logger.error(f"Failed to initialize OpenAI client in KGExtractor: {e}")
-            # Fallback if verify=True failed
+            logger.error(f"Failed to initialize KGExtractor: {e}")
             if settings.VERIFY_SSL:
                 try:
                     logger.warning("Attempting fallback with verify=False in KGExtractor...")
@@ -43,110 +38,221 @@ class KGExtractor:
 
         self.model = settings.OPENAI_MODEL
 
-    def extract_triples(self, chunk: Dict[str, Any], ontology: Dict[str, Any], user_instructions: str = "") -> List[Dict[str, Any]]:
+    def _build_prompt(self, chunk: Dict[str, Any], ontology: Dict[str, Any], user_instructions: str) -> str:
+        entities_str = "\n".join(
+            [f"  - {e['name']}: {e.get('description', '')}" for e in ontology.get("entities", [])]
+        )
+        relations_str = "\n".join(
+            [f"  - {r['label']}: ({r['source']}) --> ({r['target']}) | {r.get('description', '')}"
+             for r in ontology.get("relations", [])]
+        )
+
+        user_context_block = (
+            f"\nINSTRUÇÕES ESPECÍFICAS DO USUÁRIO (prioridade máxima):\n{user_instructions}\n"
+            if user_instructions else ""
+        )
+
+        return f"""Você é um extrator forense de Grafos de Conhecimento. Extraia triplas semânticas do texto abaixo.
+{user_context_block}
+ESQUEMA DE ENTIDADES PERMITIDAS:
+{entities_str}
+
+ESQUEMA DE RELAÇÕES PERMITIDAS:
+{relations_str}
+
+REGRAS DE EXTRAÇÃO (CRÍTICAS — violações serão ignoradas):
+1. **Fidelidade total**: Extraia APENAS o que está explicitamente escrito no texto. Nada inventado.
+2. **Entidades concretas**: Use o nome EXATO como aparece no texto (ex: "Fundação Seade", não "Seade").
+3. **Proibido**:
+   - Entidades genéricas sem nome (ex: "o autor", "um instituto", "dados")
+   - Anos isolados como entidades (ex: "2023", "1990") SALVO se for o sujeito central de uma métrica
+   - Caminhos de arquivo, extensões (.pdf, .csv), nomes de diretório
+   - Relações vagas: "está_relacionado_a", "é_associado_com", "faz_parte_de" sem contexto
+   - Triplas onde source == target (auto-referências)
+4. **source_type e target_type**: Use EXATAMENTE um dos tipos do esquema acima.
+5. **Granularidade**: Prefira 5 triplas precisas a 20 triplas rasas.
+
+TEXTO A ANALISAR:
+{chunk["text"]}
+
+FORMATO DE SAÍDA (APENAS JSON, sem texto extra):
+[
+  {{"source": "Nome Exato da Entidade", "source_type": "TIPO", "target": "Nome Exato", "target_type": "TIPO", "relation": "verbo_acao"}}
+]
+"""
+
+    def extract_triples(
+        self,
+        chunk: Dict[str, Any],
+        ontology: Dict[str, Any],
+        user_instructions: str = ""
+    ) -> Dict[str, Any]:
         """
-        Extracts triples from a chunk based on the provided ontology and user context.
+        Extracts semantic triples from a chunk, with strict post-processing validation.
         """
-        # Prepare context from ontology
-        entities_str = ", ".join([e["name"] for e in ontology.get("entities", [])])
-        relations_str = ", ".join([r["label"] for r in ontology.get("relations", [])])
-        
-        user_context_block = f"\nINSTRUÇÕES ADICIONAIS DO USUÁRIO:\n{user_instructions}\n" if user_instructions else ""
+        prompt = self._build_prompt(chunk, ontology, user_instructions)
+        valid_types = {e["name"].upper() for e in ontology.get("entities", [])}
 
-        prompt = f"""
-        VOCÊ É UM ANALISTA FORENSE E ESPECIALISTA EM GRAFOS DE CONHECIMENTO DE CLASSE MUNDIAL.
-        Sua tarefa é extrair triplas semânticas ricas e PROFISSIONAIS do texto abaixo.
-        {user_context_block}
-        
-        ESQUEMA DE ENTIDADES PERMITIDAS: {entities_str}
-        ESQUEMA DE RELAÇÕES PERMITIDAS: {relations_str}
-
-        DIRETRIZES DE EXTRAÇÃO PROFISSIONAL:
-        1. **Filtro de Ruído (CRÍTICO)**: 
-           - NÃO extraia entidades sem nexo ou inúteis (ex: nomes de diretórios, caminhos de arquivo, extensões como .pdf).
-           - NÃO crie entidades para ANOS isolados (ex: "2023", "2024") a menos que sejam o SUJEITO central de uma métrica.
-           - Evite entidades genéricas como "Banco de Dados" se estiverem apenas descrevendo a infraestrutura técnica irrelevante para o negócio.
-        2. **Hierarquia de Texto**: Identifique títulos (#, ##) e crie relações de "pertence_à_seção" para manter o contexto estrutural.
-        3. **Nexo Semântico**: Cada tripla deve representar um fato de negócio ou técnico real. Conecte as entidades para que o grafo conte a "história" do documento.
-        4. **Análise de Tabelas**: Extraia dados de tabelas markdown com precisão absoluta.
-        
-        TEXTO PARA ANÁLISE (PARTE DO DOCUMENTO):
-        {chunk["text"]}
-
-        FORMATO DE SAÍDA (LISTA JSON):
-        [
-            {{"source": "Nome da Entidade", "source_type": "TIPO", "target": "Nome da Entidade", "target_type": "TIPO", "relation": "RELAÇÃO"}}
-        ]
-
-        REGRAS DE OURO:
-        - Retorne APENAS o JSON.
-        - Se o texto citar uma metodologia, extraia as etapas como uma sequência.
-        - Use português técnico e PRECISÃO SEMÂNTICA.
-        """
-        
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "Você é um extrator preciso de Grafos de Conhecimento. Extraia triplas (sujeito, relação, objeto) em PORTUGUÊS, usando o esquema de ontologia fornecido."},
+                    {
+                        "role": "system",
+                        "content": (
+                            "Você é um extrator preciso de Grafos de Conhecimento. "
+                            "Retorne SEMPRE e APENAS uma lista JSON válida. Nenhum texto antes ou depois. "
+                            "Se não houver nada para extrair, retorne []."
+                        )
+                    },
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0
             )
-            
+
             raw_content = response.choices[0].message.content or ""
-            content = self._parse_json(raw_content)
             usage = response.usage.model_dump() if hasattr(response, 'usage') else {}
-            
-            # Handle variations in JSON structure
-            triples = []
+            content = self._parse_json(raw_content)
+
+            # Normalize to list
+            raw_triples: List[Dict] = []
             if isinstance(content, list):
-                triples = content
+                raw_triples = content
             elif isinstance(content, dict):
-                if "triples" in content:
-                    triples = content["triples"]
-                elif "result" in content:
-                    triples = content["result"]
-                else:
-                    # Try to find the first list value
+                for key in ("triples", "result", "data"):
+                    if key in content and isinstance(content[key], list):
+                        raw_triples = content[key]
+                        break
+                if not raw_triples:
                     for val in content.values():
                         if isinstance(val, list):
-                            triples = val
+                            raw_triples = val
                             break
-            
-            # Ensure each triple has expected keys
-            validated_triples = []
-            for t in triples:
-                if isinstance(t, dict) and all(k in t for k in ["source", "target", "relation"]):
-                    validated_triples.append(t)
-            
-            return {
-                "triples": validated_triples,
-                "usage": usage
-            }
-                
+
+            # Strict validation
+            validated = self._validate_triples(raw_triples, valid_types)
+
+            logger.info(
+                f"Chunk {chunk.get('index', '?')}: "
+                f"{len(raw_triples)} raw → {len(validated)} valid triples"
+            )
+            return {"triples": validated, "usage": usage}
+
         except Exception as e:
             logger.error(f"KG extraction failed for chunk {chunk.get('index')}: {e}")
-            raise e
+            raise
+
+    def _validate_triples(
+        self, triples: List[Dict], valid_types: set
+    ) -> List[Dict[str, Any]]:
+        """
+        Post-processing filter with strict quality rules:
+        - All required keys must be present and non-empty
+        - source_type and target_type must be in the known ontology schema
+        - source != target (no self-loops)
+        - No trivially bad entities (pure numbers, single chars, file paths)
+        - Deduplicate (source, target, relation) tuples
+        """
+        BANNED_PATTERNS = {
+            # Single words that are meaningless as entities
+            "dados", "informação", "texto", "arquivo", "documento",
+            "conteúdo", "resultado", "valor", "item", "elemento",
+        }
+        VAGUE_RELATIONS = {
+            "está_relacionado_a", "é_associado_com", "relaciona_se",
+            "tem_relação", "possui_relação", "faz_parte", "integra",
+        }
+
+        seen = set()
+        validated = []
+
+        for t in triples:
+            if not isinstance(t, dict):
+                continue
+
+            source = str(t.get("source", "")).strip()
+            target = str(t.get("target", "")).strip()
+            relation = str(t.get("relation", "")).strip().lower().replace(" ", "_")
+            source_type = str(t.get("source_type", "")).strip().upper()
+            target_type = str(t.get("target_type", "")).strip().upper()
+
+            # Required fields check
+            if not source or not target or not relation:
+                continue
+
+            # Self-loop check
+            if source.lower() == target.lower():
+                continue
+
+            # Entity quality check: no pure numbers, too short, or banned words
+            if self._is_bad_entity(source, BANNED_PATTERNS):
+                logger.debug(f"Rejected entity (source): '{source}'")
+                continue
+            if self._is_bad_entity(target, BANNED_PATTERNS):
+                logger.debug(f"Rejected entity (target): '{target}'")
+                continue
+
+            # Vague relation check
+            if relation in VAGUE_RELATIONS:
+                logger.debug(f"Rejected vague relation: '{relation}'")
+                continue
+
+            # Type validation (only if ontology has types defined)
+            if valid_types:
+                if source_type not in valid_types:
+                    # Attempt to find a close match, otherwise use UNKNOWN
+                    source_type = "DESCONHECIDO"
+                if target_type not in valid_types:
+                    target_type = "DESCONHECIDO"
+
+            # Deduplication
+            triple_key = (source.lower(), target.lower(), relation)
+            if triple_key in seen:
+                continue
+            seen.add(triple_key)
+
+            validated.append({
+                "source": source,
+                "source_type": source_type,
+                "target": target,
+                "target_type": target_type,
+                "relation": relation
+            })
+
+        return validated
+
+    @staticmethod
+    def _is_bad_entity(name: str, banned: set) -> bool:
+        """Returns True if entity name is noise (should be rejected)."""
+        # Pure numbers are noise (years, IDs)
+        if name.isdigit():
+            return True
+        # Very short names (1-2 chars)
+        if len(name) <= 2:
+            return True
+        # File path patterns
+        if '/' in name or '\\' in name or name.endswith(('.pdf', '.csv', '.docx', '.txt')):
+            return True
+        # Banned generic words (case-insensitive, single word check)
+        if name.lower().strip() in banned:
+            return True
+        return False
 
     def _parse_json(self, text: str) -> Any:
-        """
-        Robustly parses JSON from text, handling potential markdown wrappers.
-        """
+        """Robustly parses JSON from LLM text output."""
         text = text.strip()
         if not text:
-            logger.error("LLM returned empty response content.")
+            logger.error("LLM returned empty response.")
             return []
 
-        # Try direct parse
+        # Direct parse
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
 
-        # Try to extract from markdown code blocks
+        # Strip markdown code fences
         import re
-        # Check for list [ ] or object { }
         json_match = re.search(r'```(?:json)?\s*([\[\{].*?[\]\}])\s*```', text, re.DOTALL)
         if json_match:
             try:
@@ -154,18 +260,18 @@ class KGExtractor:
             except json.JSONDecodeError:
                 pass
 
-        # Last resort: find first [ or { and last ] or }
+        # Last resort: extract outermost [ ] or { }
         start_candidates = [idx for idx in [text.find('['), text.find('{')] if idx != -1]
         end_candidates = [idx for idx in [text.rfind(']'), text.rfind('}')] if idx != -1]
-        
+
         start_idx = min(start_candidates) if start_candidates else None
         end_idx = max(end_candidates) if end_candidates else None
-        
+
         if start_idx is not None and end_idx is not None and end_idx > start_idx:
             try:
-                return json.loads(text[start_idx:end_idx+1])
+                return json.loads(text[start_idx:end_idx + 1])
             except json.JSONDecodeError:
                 pass
 
-        logger.error(f"Failed to parse JSON from response: {text[:500]}...")
-        return {"triples": [], "usage": {}}
+        logger.error(f"Failed to parse JSON from response: {text[:300]}...")
+        return []

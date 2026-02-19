@@ -23,17 +23,14 @@ const VisualizePage = () => {
     ]);
     const [isThinking, setIsThinking] = useState(false);
     const [inputMessage, setInputMessage] = useState('');
-    const [isAudioEnabled, setIsAudioEnabled] = useState(() => {
-        return localStorage.getItem('nadiaAudioEnabled') === 'true';
-    });
+    const [isAudioEnabled, setIsAudioEnabled] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isNadiaStopping, setIsNadiaStopping] = useState(false);
     const stopRef = useRef(false);
     const premiumAudioRef = useRef(null);
     const [sessionCost, setSessionCost] = useState(0);
-    const [voiceMode, setVoiceMode] = useState(() => {
-        return localStorage.getItem('nadiaVoiceMode') || 'local';
-    });
+    // Voice is disabled — hardcoded to 'none' to avoid local model load
+    const voiceMode = 'none';
     const [usageStats, setUsageStats] = useState({ total_usd: 0, estimated_savings_usd: 0, messages_count: 0 });
 
     const refreshUsage = async () => {
@@ -88,9 +85,7 @@ const VisualizePage = () => {
         };
     }, [isResizing]);
 
-    useEffect(() => {
-        localStorage.setItem('nadiaAudioEnabled', isAudioEnabled);
-    }, [isAudioEnabled]);
+    // Audio is disabled — no localStorage sync needed
 
     // TTS Helper
     const cleanTextForSpeech = (text) => {
@@ -376,7 +371,7 @@ const VisualizePage = () => {
                 edgeElasticity: 100,
                 nodeOverlap: 20,
                 gravity: 0.25,
-                numIter: 1000,
+                numIter: 500,
                 initialTemp: 200,
                 coolingFactor: 0.95,
                 minTemp: 1.0,
@@ -583,10 +578,7 @@ const VisualizePage = () => {
     const handleSendMessage = async () => {
         if (!inputMessage.trim() || isThinking) return;
 
-        // --- AUDIO WARMUP TRICK ---
-        // Play a silent sound to unlock AudioContext on mobile/strict browsers
-        const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
-        silentAudio.play().catch(() => { });
+
 
         const userMsg = { role: 'user', content: inputMessage };
         setChatMessages(prev => [...prev, userMsg]);

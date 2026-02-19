@@ -82,7 +82,7 @@ class APIClient {
         return response.json();
     }
 
-    async nadiaChat(jobId, messages, graphData = null, voiceMode = 'premium') {
+    async nadiaChat(jobId, messages, graphData = null, voiceMode = 'none') {
         const body = { job_id: jobId, messages, voice_mode: voiceMode };
         if (graphData) {
             // graphData has structure: { graph: { elements: ... }, stats: ... }

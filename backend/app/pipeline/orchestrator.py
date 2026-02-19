@@ -187,8 +187,11 @@ class PipelineOrchestrator:
                     weight = job["progress"]
                     job["estimated_total_time"] = (real_time_est * weight) + (initial_heuristic * (1 - weight))
             
-            # STAGE 5: Normalization
+            # STAGE 5: Prune unused ontology types (after we know what was extracted)
             job["current_stage"] = "normalization"
+            ontology = self.ontology_builder.prune_unused_types(ontology, all_triples)
+            job["results"]["ontology"] = ontology  # Update with pruned version
+            
             normalized_triples = self.normalizer.normalize(all_triples)
             job["progress"] = 0.90
             
