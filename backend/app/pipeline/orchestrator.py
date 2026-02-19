@@ -66,24 +66,24 @@ class PipelineOrchestrator:
         return job_id
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
+        import json
         job = self.jobs.get(job_id)
         
         # If not in memory, try disk storage first (most reliable)
         if not job:
-            import json
             # Try to find by UUID suffix (glob)
             matches = list(settings.RESULTS_DIR.glob(f"*_{job_id}.json"))
             if not matches and (settings.RESULTS_DIR / f"{job_id}.json").exists():
                 matches = [settings.RESULTS_DIR / f"{job_id}.json"]
-                
-        if matches:
-            try:
-                with open(matches[0], 'r', encoding='utf-8') as f:
-                    job = json.load(f)
-                    # Cache it back to memory for speed
-                    self.jobs[job_id] = job
-            except Exception as e:
-                logger.error(f"Error loading job from disk {job_id}: {e}")
+            
+            if matches:
+                try:
+                    with open(matches[0], 'r', encoding='utf-8') as f:
+                        job = json.load(f)
+                        # Cache it back to memory for speed
+                        self.jobs[job_id] = job
+                except Exception as e:
+                    logger.error(f"Error loading job from disk {job_id}: {e}")
 
         # If still not found, try Redis cache
         if not job:

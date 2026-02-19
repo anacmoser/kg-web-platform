@@ -269,8 +269,10 @@ def chat():
             clean_for_tts = re.sub(r'\*\*', '', clean_for_tts)
             clean_for_tts = re.sub(r'[\(\[]?ID:\s*[\w\-]+[\)\]]?', '', clean_for_tts).strip()
 
-            # Generate via Kokoro (Local)
+            # Generate COMPLETE audio here (not per-segment) to avoid stuttering
+            logger.info(f"Generating complete audio for {len(clean_for_tts)} characters...")
             audio_base64 = local_audio.generate_audio_base64(clean_for_tts)
+            logger.info(f"Audio generation complete: {len(audio_base64) if audio_base64 else 0} bytes")
             
             # GPT-4o-mini Text Price (Feb 2025): $0.15 / $0.60 per 1M (Local Audio is FREE)
             text_cost = ((usage.prompt_tokens * 0.15) + (usage.completion_tokens * 0.60)) / 1000000.0

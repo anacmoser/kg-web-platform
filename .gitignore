@@ -56,3 +56,6 @@ backend/voices.bin
 backend/voices.json
 backend/*.wav
 backend/usage.json
+backend/backend_out.txt
+backend/app/storage/
+*.wav

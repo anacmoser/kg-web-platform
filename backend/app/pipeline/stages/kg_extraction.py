@@ -155,10 +155,13 @@ class KGExtractor:
                 pass
 
         # Last resort: find first [ or { and last ] or }
-        start_idx = min([idx for idx in [text.find('['), text.find('{')] if idx != -1] or [None])
-        end_idx = max([idx for idx in [text.rfind(']'), text.rfind('}')] if idx != -1] or [None])
+        start_candidates = [idx for idx in [text.find('['), text.find('{')] if idx != -1]
+        end_candidates = [idx for idx in [text.rfind(']'), text.rfind('}')] if idx != -1]
         
-        if start_idx is not None and end_idx is not None:
+        start_idx = min(start_candidates) if start_candidates else None
+        end_idx = max(end_candidates) if end_candidates else None
+        
+        if start_idx is not None and end_idx is not None and end_idx > start_idx:
             try:
                 return json.loads(text[start_idx:end_idx+1])
             except json.JSONDecodeError:

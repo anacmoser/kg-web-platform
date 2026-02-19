@@ -33,7 +33,7 @@ class LocalAudioEngine:
             self.kokoro = None
             return False
 
-    def generate_audio_base64(self, text, voice="af_bella", speed=1.0):
+    def generate_audio_base64(self, text, voice="pf_dora", speed=1.0):
         if not self._ensure_initialized():
             logger.error("Kokoro engine not available.")
             return None
@@ -44,7 +44,7 @@ class LocalAudioEngine:
                 text, 
                 voice=voice, 
                 speed=speed, 
-                lang="en-us"
+                lang="pt-br"
             )
             
             # Convert numpy to WAV bytes in memory

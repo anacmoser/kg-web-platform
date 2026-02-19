@@ -609,30 +609,26 @@ const VisualizePage = () => {
             let premiumAudioPresent = false;
 
             if (audio_base64 && isAudioEnabled) {
-                // If we're in premium mode, we might use the big audio stream for better quality
-                // But if we're in local mode, segment-based TTS (in startNarrative) is better for synchronization
-                if (voiceMode === 'premium') {
-                    console.log("🔊 Premium Audio received. Model:", response.model_used);
-                    const audioBlob = await (await fetch(`data:audio/wav;base64,${audio_base64}`)).blob();
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    const pAudio = new Audio(audioUrl);
-                    premiumAudioRef.current = pAudio;
-                    premiumAudioPresent = true;
+                // ALWAYS use the backend-provided audio (whether Premium or Local-Concatenated)
+                // This eliminates the 30s stuttering in local mode
+                console.log("🔊 Received audio. Model:", response.model_used);
+                const audioBlob = await (await fetch(`data:audio/wav;base64,${audio_base64}`)).blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const pAudio = new Audio(audioUrl);
+                premiumAudioRef.current = pAudio;
+                premiumAudioPresent = true;
 
-                    pAudio.play().catch(e => {
-                        console.warn("Premium playback blocked:", e);
-                        premiumAudioPresent = false;
-                    });
-                    setIsSpeaking(true);
+                pAudio.play().catch(e => {
+                    console.warn("Premium playback blocked:", e);
+                    premiumAudioPresent = false;
+                });
+                setIsSpeaking(true);
 
-                    pAudio.onended = () => {
-                        setIsSpeaking(false);
-                        premiumAudioRef.current = null;
-                    };
-                }
+                pAudio.onended = () => {
+                    setIsSpeaking(false);
+                    premiumAudioRef.current = null;
+                };
             }
-
-            // Standard JSON regex for splitting
             const jsonRegex = /\{\s*"action"\s*:\s*"[^"]+"[^}]*\}/g;
 
             // Aggressive JSON cleaning for the chat UI display
@@ -721,104 +717,106 @@ const VisualizePage = () => {
 
             const startNarrative = async () => {
                 console.log('Final Stages:', finalStages);
-                let currentAudio = premiumAudioRef.current; // Use the one big audio if it exists
 
-                for (let i = 0; i < finalStages.length; i++) {
-                    // EMERGENCY CHECK: Stop Loop if flag is set
-                    if (stopRef.current) {
-                        if (premiumAudioRef.current) {
-                            premiumAudioRef.current.pause();
-                            premiumAudioRef.current = null;
-                        }
-                        break;
-                    }
+                // HYBRID STREAMING: Play first, buffer next (eliminates wait time)
+                if (!premiumAudioPresent && isAudioEnabled) {
+                    setIsSpeaking(true);
 
-                    const stage = finalStages[i];
+                    for (let i = 0; i < finalStages.length; i++) {
+                        if (stopRef.current) break;
 
-                    // If we have premium audio, we don't do TTS, just execution and pacing
-                    if (premiumAudioPresent && isAudioEnabled) {
-                        if (stage.command) {
-                            executeNadiaCommand(stage.command);
-                            await new Promise(r => setTimeout(r, 400));
-                        }
-                        // Visual delay per chunk of text
-                        await new Promise(r => setTimeout(r, 1200));
-                        continue;
-                    }
-
-                    if (isAudioEnabled && (stage.text.length > 0)) {
-                        try {
-                            setIsSpeaking(true);
-
-                            // Execute command BEFORE speaking (visual cue)
+                        const stage = finalStages[i];
+                        if (!stage.text || stage.text.length === 0) {
+                            // Command-only stage
                             if (stage.command) {
                                 executeNadiaCommand(stage.command);
-                                // Small delay to let animation start
-                                await new Promise(r => setTimeout(r, 300));
+                                await new Promise(r => setTimeout(r, 800));
+                            }
+                            continue;
+                        }
+
+                        const textForTTS = cleanTextForSpeech(stage.text);
+                        if (textForTTS.length === 0) continue;
+
+                        try {
+                            // Execute command immediately (non-blocking)
+                            if (stage.command) {
+                                executeNadiaCommand(stage.command);
                             }
 
-                            // Strip markdown for TTS
-                            const textForTTS = cleanTextForSpeech(stage.text);
+                            // Generate audio for THIS segment
+                            const ttsResponse = await api.nadiaAudio(textForTTS, voiceMode);
+                            if (ttsResponse.ok) {
+                                const audioBlob = await ttsResponse.blob();
+                                const audio = new Audio(URL.createObjectURL(audioBlob));
 
-                            if (textForTTS.length > 0) {
-                                let spokeWithPremium = false;
-                                try {
-                                    const ttsResponse = await api.nadiaAudio(textForTTS, voiceMode);
-                                    if (ttsResponse.ok) {
-                                        const audioBlob = await ttsResponse.blob();
-                                        const audio = new Audio(URL.createObjectURL(audioBlob));
-                                        await new Promise((resolve) => {
-                                            audio.onended = () => {
-                                                spokeWithPremium = true;
-                                                currentAudio = null;
-                                                resolve();
-                                            };
-                                            audio.onerror = () => {
-                                                console.warn("Audio error");
-                                                currentAudio = null;
-                                                resolve();
-                                            };
-                                            audio.play().catch(e => {
-                                                console.warn("Audio blocked/failed, falling back to browser TTS:", e);
-                                                currentAudio = null;
-                                                resolve();
-                                            });
-
-                                            // Listen for stop signals during playback
-                                            const checkStop = setInterval(() => {
-                                                if (stopRef.current) {
-                                                    audio.pause();
-                                                    currentAudio = null;
-                                                    clearInterval(checkStop);
-                                                    resolve();
-                                                }
-                                            }, 100);
-                                        });
-                                    }
-                                } catch (e) {
-                                    console.error("Premium TTS failed:", e);
-                                }
-
-                                // Fallback to Browser TTS if Premium fails
-                                if (!spokeWithPremium) {
-                                    await new Promise((resolve) => {
-                                        speak(textForTTS, resolve);
+                                // Play immediately (no waiting!)
+                                await new Promise((resolve) => {
+                                    audio.onended = resolve;
+                                    audio.onerror = () => {
+                                        console.warn('Audio error');
+                                        resolve();
+                                    };
+                                    audio.play().catch(e => {
+                                        console.warn('Audio playback failed:', e);
+                                        resolve();
                                     });
-                                }
+
+                                    // Stop check
+                                    const checkStop = setInterval(() => {
+                                        if (stopRef.current) {
+                                            audio.pause();
+                                            clearInterval(checkStop);
+                                            resolve();
+                                        }
+                                    }, 100);
+                                });
+                            } else {
+                                // Fallback to browser TTS
+                                await new Promise((resolve) => {
+                                    speak(textForTTS, resolve);
+                                });
                             }
                         } catch (err) {
-                            console.error("Narrative Error:", err);
-                        } finally {
-                            setIsSpeaking(false);
+                            console.error('TTS Error:', err);
+                            // Fallback to browser TTS
+                            await new Promise((resolve) => {
+                                speak(textForTTS, resolve);
+                            });
                         }
-                    } else if (stage.command) {
-                        // If only command (no text), execute and wait
-                        executeNadiaCommand(stage.command);
-                        await new Promise(r => setTimeout(r, 1500));
+
+                        // Tiny gap between segments
+                        if (i < finalStages.length - 1) {
+                            await new Promise(r => setTimeout(r, 100));
+                        }
                     }
 
-                    // Pace the transitions between stages
-                    await new Promise(r => setTimeout(r, 500));
+                    setIsSpeaking(false);
+                } else if (premiumAudioPresent && isAudioEnabled) {
+                    // Premium mode: use single audio file
+                    for (let i = 0; i < finalStages.length; i++) {
+                        if (stopRef.current) {
+                            if (premiumAudioRef.current) {
+                                premiumAudioRef.current.pause();
+                                premiumAudioRef.current = null;
+                            }
+                            break;
+                        }
+                        const stage = finalStages[i];
+                        if (stage.command) {
+                            executeNadiaCommand(stage.command);
+                        }
+                        await new Promise(r => setTimeout(r, 800));
+                    }
+                } else {
+                    // No audio: just execute commands
+                    for (const stage of finalStages) {
+                        if (stopRef.current) break;
+                        if (stage.command) {
+                            executeNadiaCommand(stage.command);
+                            await new Promise(r => setTimeout(r, 1000));
+                        }
+                    }
                 }
             };
 
