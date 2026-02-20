@@ -48,37 +48,41 @@ class KGExtractor:
         )
 
         user_context_block = (
-            f"\nINSTRUÇÕES ESPECÍFICAS DO USUÁRIO (prioridade máxima):\n{user_instructions}\n"
+            f"\n*** INSTRUÇÕES EXPLÍCITAS DO USUÁRIO (Rigor Máximo) ***\n{user_instructions}\n"
             if user_instructions else ""
         )
 
-        return f"""Você é um extrator forense de Grafos de Conhecimento. Extraia triplas semânticas do texto abaixo.
+        return f"""Você é um arquiteto sênior de grafos especializados em extração TÉCNICA e METODOLÓGICA.
 {user_context_block}
-ESQUEMA DE ENTIDADES PERMITIDAS:
-{entities_str}
 
-ESQUEMA DE RELAÇÕES PERMITIDAS:
-{relations_str}
+OBJETIVO: Extrair triplas que representam a lógica, matemática e os processos descritos no texto.
 
-REGRAS DE EXTRAÇÃO (CRÍTICAS — violações serão ignoradas):
-1. **Fidelidade total**: Extraia APENAS o que está explicitamente escrito no texto. Nada inventado.
-2. **Entidades concretas**: Use o nome EXATO como aparece no texto (ex: "Fundação Seade", não "Seade").
-3. **Proibido**:
-   - Entidades genéricas sem nome (ex: "o autor", "um instituto", "dados")
-   - Anos isolados como entidades (ex: "2023", "1990") SALVO se for o sujeito central de uma métrica
-   - Caminhos de arquivo, extensões (.pdf, .csv), nomes de diretório
-   - Relações vagas: "está_relacionado_a", "é_associado_com", "faz_parte_de" sem contexto
-   - Triplas onde source == target (auto-referências)
-4. **source_type e target_type**: Use EXATAMENTE um dos tipos do esquema acima.
-5. **Granularidade**: Prefira 5 triplas precisas a 20 triplas rasas.
+CADEIA DE ATENÇÃO (Respeite rigorosamente):
+1. ANÁLISE TÉCNICA: Identifique fórmulas, métodos estatísticos, fontes de dados e passos procedimentais. 
+2. FILTRO DE RELEVÂNCIA: Ignore exemplos triviais (ex: tipos de comida, nomes de arquivos, anos genéricos) SE eles não forem o foco da instrução do usuário. 
+   - Se o texto diz "Cálculo do PIB do Repolho", a entidade importante é "REPOLHO" como "PRODUTO" ou "VARIAVEL", não como um "SETOR ECONÔMICO" solto.
+3. PADRONIZAÇÃO: Unifique nomes imediatamente. "Secretaria" -> "Secretaria da Fazenda". "Sigla" -> "Nome Completo".
+4. VERIFICAÇÃO DE INSTRUÇÃO: Se o usuário disse "FOQUE EM METODOLOGIA", 80% das suas triplas devem ser sobre métodos, fluxos e indicadores.
 
-TEXTO A ANALISAR:
+ESQUEMA PERMITIDO:
+ENTIDADES: {entities_str}
+RELAÇÕES: {relations_str}
+
+REGRAS FINAIS:
+- Proibido triplas genéricas (A está_relacionado_a B).
+- Proibido source == target.
+- Use nomes canônicos e técnicos.
+
+TEXTO:
 {chunk["text"]}
 
-FORMATO DE SAÍDA (APENAS JSON, sem texto extra):
-[
-  {{"source": "Nome Exato da Entidade", "source_type": "TIPO", "target": "Nome Exato", "target_type": "TIPO", "relation": "verbo_acao"}}
-]
+RETORNE APENAS JSON:
+{{
+  "chain_of_thought": "Passo 1: Identifiquei o método X. Passo 2: Verifiquei que 'tomate' é apenas um parâmetro da equação Y. Passo 3: Segui a regra de ignorar locais.",
+  "triples": [
+    {{"source": "Nome Técnico", "source_type": "TIPO", "target": "Nome Técnico", "target_type": "TIPO", "relation": "verbo_infinitivo"}}
+  ]
+}}
 """
 
     def extract_triples(

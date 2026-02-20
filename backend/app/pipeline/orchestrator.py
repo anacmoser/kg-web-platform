@@ -150,7 +150,10 @@ class PipelineOrchestrator:
             
             # STAGE 3: Ontology
             job["current_stage"] = "ontology"
-            ontology_res = self.ontology_builder.build(all_chunks)
+            ontology_res = self.ontology_builder.build(
+                all_chunks, 
+                user_instructions=config.get("user_instructions", "")
+            )
             ontology = ontology_res.get("ontology", ontology_res)
             self._update_job_usage(job, ontology_res.get("usage", {}))
             

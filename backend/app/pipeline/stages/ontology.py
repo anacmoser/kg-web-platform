@@ -7,40 +7,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-ONTOLOGY_PROMPT = """
-Analise o seguinte texto e crie um esquema de Ontologia PRECISO e MÍNIMO para um Grafo de Conhecimento.
-
-REGRAS CRÍTICAS:
-1. **QUALIDADE > QUANTIDADE**: Prefira 10 tipos de entidades reais a 50 tipos genéricos.
-2. **Sem tipos fantasmas**: Só inclua um tipo de entidade se você consegue citar pelo menos 2 exemplos concretos que aparecem no texto.
-3. **Relações com semântica real**: Cada relação deve expressar um fato verificável. Proibido: "está_relacionado_a", "faz_parte_de" genérico, "é_associado_com".
-4. **Verbos de ação e direção**: Use relações unidirecionais com verbos claros: "emprega", "financia", "calcula_via", "é_componente_de", "produz", "localiza_em".
-5. **Português técnico acessível**: Nomes em português, sem abreviações obscuras.
-
-ENTIDADES (máx 20 - atenção: SÓ inclua se existem instâncias reais no texto):
-- PESSOA: Nomes de pessoas físicas (ex: "João Silva", "Maria Aparecida")
-- ORGANIZAÇÃO: Empresas, fundações, órgãos públicos com nome (ex: "IBGE", "Seade")
-- CONCEITO: Ideias, metodologias, indicadores (ex: "PIB", "Taxa de Fecundidade")
-- LOCAL: Localidades geográficas com nome (ex: "São Paulo", "Brasil")
-- EVENTO: Ocorrências com data ou período definido (ex: "Censo 2022")
-- Adapte: Crie tipos específicos do domínio do texto SE houver instâncias reais.
-
-RELAÇÕES (máx 30):
-- Apenas relações que aparecem explicitamente no texto.
-- Formato: verbo_no_infinitivo ou substantivo_ação (ex: "publica", "contém", "emprega_método")
-
-FORMATO DE SAÍDA: APENAS JSON, sem texto extra.
-{
-  "entities": [
-    {"name": "TIPO", "description": "O que representa. Exemplo: [2+ exemplos do texto]"}
-  ],
-  "relations": [
-    {"label": "verbo_acao", "source": "TIPO_ORIGEM", "target": "TIPO_DESTINO", "description": "O que essa relação significa"}
-  ]
-}
-"""
-
-
 class OntologyBuilder:
     def __init__(self):
         try:
@@ -71,10 +37,10 @@ class OntologyBuilder:
 
         self.model = settings.OPENAI_MODEL
 
-    def build(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def build(self, chunks: List[Dict[str, Any]], user_instructions: str = "") -> Dict[str, Any]:
         """
         Builds an ontology from a representative sample of chunks,
-        then prunes entity types with no real instances.
+        respecting user global instructions (e.g., banning certain types).
         """
         # Sample strategically: beginning + middle + end for better coverage
         sample_size = min(6, len(chunks))
@@ -87,16 +53,53 @@ class OntologyBuilder:
 
         sample_text = "\n---\n".join([c["text"][:2000] for c in sample_chunks])
 
+        user_context_block = (
+            f"\n*** INSTRUÇÕES EXPLÍCITAS E PRIORITÁRIAS DO USUÁRIO (Rigor Máximo) ***\n{user_instructions}\n"
+            if user_instructions else ""
+        )
+
+        prompt = f"""Analise o texto e crie uma Ontologia para um Grafo de Conhecimento Científico/Técnico.
+{user_context_block}
+
+Você deve identificar as classes (entidades) e relações fundamentais. Foque em METODOLOGIA, MATEMÁTICA, DADOS e CONCEITOS ESTRUTURAIS.
+
+REGRAS DE OURO (SEM EXCEÇÃO):
+1. **NÃO CONFUNDA EXEMPLOS COM CLASSES**: Se o texto cita "tomate", o tipo NÃO é "Tomate" nem "Setor Economico" (a menos que o texto seja sobre agronegócio). Se o texto fala de cálculo de PIB, "tomate" é apenas um DADO ou PRODUTO, não um setor. Classe correta: "VARIAVEL", "INDICADOR", "PRODUTO".
+2. **PRIORIDADE TÉCNICA**: Se o usuário pediu foco em "matemática e metodologia", priorize tipos como "METODO_CALCULO", "EQUACAO", "FONTE_DADOS", "INDICADOR_ESTATISTICO".
+3. **RIGOR NAS INSTRUÇÕES**: Se o usuário proibiu algo, REMOVA totalmente do esquema.
+4. **QUALIDADE > QUANTIDADE**: Evite criar 20 tipos. Use de 5 a 12 tipos bem definidos que cubram o propósito técnico do texto.
+5. **DEDUPLICAÇÃO**: Não crie tipos redundantes (ex: "Empresa" e "Organizacao"). Use apenas "ORGANIZACAO".
+
+ENTIDADES SUGERIDAS (Adapte ao domínio):
+- METODOLOGIA: Algoritmos, fórmulas, passos de processo.
+- INDICADOR: Métricas calculadas (ex: PIB, VBP).
+- FONTE_DADOS: De onde vem a informação (ex: Censo, Pesquisa).
+- ORGANIZACAO: Institutos, empresas, órgãos.
+- CONCEITO: Definições teóricas.
+
+RELAÇÕES (Use verbos precisos):
+- "calcula_via", "utiliza_dado", "pertence_a", "aplica_metodo", "publicado_por".
+
+FORMATO DE SAÍDA (Obrigatório JSON):
+{{
+  "entities": [{{ "name": "TIPO_UPPER", "description": "Definição técnica + o que NÃO incluir" }}],
+  "relations": [{{ "label": "verbo_infinitivo", "source": "TIPO", "target": "TIPO", "description": "Ação semântica" }}]
+}}
+
+TEXTO PARA ANÁLISE:
+{sample_text}
+"""
+
         logger.info(f"Generating ontology using {self.model}...")
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": ONTOLOGY_PROMPT},
-                    {"role": "user", "content": sample_text}
+                    {"role": "system", "content": "Você é um arquiteto de ontologias especialista em extração de Grafos de Conhecimento Científico."},
+                    {"role": "user", "content": prompt}
                 ],
-                temperature=0.0  # Deterministic for schema generation
+                temperature=0.0
             )
 
             raw_content = response.choices[0].message.content or ""

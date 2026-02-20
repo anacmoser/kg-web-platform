@@ -12,11 +12,11 @@ class ChunkingEngine:
     """
     
     def __init__(self):
-        # Increased overlap and size for better context retention
+        # Precise chunking for better extraction focus
         self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=4000,
-            chunk_overlap=400,
-            separators=["\n\n", "\n", ".", " ", ""]
+            chunk_size=1500,
+            chunk_overlap=200,
+            separators=["\n## ", "\n### ", "\n\n", "\n", ". ", " ", ""]
         )
 
     def chunk(self, content: Dict[str, Any]) -> List[Dict[str, Any]]:
