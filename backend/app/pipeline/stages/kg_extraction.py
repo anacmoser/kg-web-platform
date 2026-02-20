@@ -201,13 +201,36 @@ RETORNE APENAS JSON:
                 logger.debug(f"Rejected vague relation: '{relation}'")
                 continue
 
-            # Type validation (only if ontology has types defined)
+            # Type validation with fuzzy matching
             if valid_types:
-                if source_type not in valid_types:
-                    # Attempt to find a close match, otherwise use UNKNOWN
-                    source_type = "DESCONHECIDO"
-                if target_type not in valid_types:
-                    target_type = "DESCONHECIDO"
+                from rapidfuzz import process, fuzz
+                
+                # Helper to resolve type or default to a safe fallback
+                def resolve_type(stype: str) -> str:
+                    stype = stype.upper().strip()
+                    if stype in valid_types:
+                        return stype
+                    
+                    # Attempt fuzzy match if not exact (lower threshold slightly for more flexibility)
+                    match = process.extractOne(stype, list(valid_types), scorer=fuzz.token_set_ratio)
+                    if match and match[1] > 70: 
+                        return match[0]
+                    
+                    # Try to map to "CONCEITO" or "DADO" if they exist as common catch-alls
+                    for fallback in ["CONCEITO", "DEFINICAO", "INSTANCIA", "OUTRO"]:
+                        if fallback in valid_types:
+                            return fallback
+                            
+                    # If truly unrelated, we'll keep it as the original string to avoid data loss,
+                    # but mark it for cleaner display. 
+                    # Actually, user prefers NO 'unknown', so we'll pick the first valid type 
+                    # as a last resort if it's essential, or just discard it if it's noise.
+                    # For now, let's use the first available type or "ENTIDADE" if it exists.
+                    if "CONCEITO" in valid_types: return "CONCEITO"
+                    return list(valid_types)[0] if valid_types else "ENTIDADE"
+
+                source_type = resolve_type(source_type)
+                target_type = resolve_type(target_type)
 
             # Deduplication
             triple_key = (source.lower(), target.lower(), relation)

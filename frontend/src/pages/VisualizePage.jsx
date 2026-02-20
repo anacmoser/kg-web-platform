@@ -29,7 +29,6 @@ const VisualizePage = () => {
     const stopRef = useRef(false);
     const premiumAudioRef = useRef(null);
     const [sessionCost, setSessionCost] = useState(0);
-    // Voice is disabled — hardcoded to 'none' to avoid local model load
     const voiceMode = 'none';
     const [usageStats, setUsageStats] = useState({ total_usd: 0, estimated_savings_usd: 0, messages_count: 0 });
 
@@ -100,53 +99,16 @@ const VisualizePage = () => {
             .trim();
     };
 
-    const speak = (text, onEnd = null) => {
-        if (!isAudioEnabled || !window.speechSynthesis) {
-            if (onEnd) onEnd();
-            return;
-        }
 
-        // Cancel previous speech
-        window.speechSynthesis.cancel();
 
-        const cleanText = cleanTextForSpeech(text);
-        if (!cleanText) {
-            if (onEnd) onEnd();
-            return;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.lang = 'pt-BR';
-        utterance.rate = 1.0;
-
-        // Force a single, consistent female voice (prevent mixing)
-        const voices = window.speechSynthesis.getVoices();
-
-        // Find the first Portuguese female voice and stick with it
-        const selectedVoice = voices.find(v =>
-            v.lang.startsWith('pt') &&
-            (v.name.toLowerCase().includes('female') ||
-                v.name.toLowerCase().includes('maria') ||
-                v.name.toLowerCase().includes('francisca'))
-        ) || voices.find(v => v.lang.startsWith('pt')) || voices[0];
-
-        if (selectedVoice) {
-            utterance.voice = selectedVoice;
-            console.log('🎙️ Using voice:', selectedVoice.name);
-        }
-
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => {
-            setIsSpeaking(false);
-            if (onEnd) onEnd();
+    // Auto-cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (cyRef.current) cyRef.current.destroy();
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            if (premiumAudioRef.current) premiumAudioRef.current.pause();
         };
-        utterance.onerror = () => {
-            setIsSpeaking(false);
-            if (onEnd) onEnd();
-        };
-
-        window.speechSynthesis.speak(utterance);
-    };
+    }, []);
 
     const handleStopNadia = () => {
         console.log("🛑 Stopping Nadia...");
@@ -244,6 +206,13 @@ const VisualizePage = () => {
     const initializeCytoscape = (graphElements, stats) => {
         if (!containerRef.current || !graphElements) return;
 
+        // Cleanup previous instance to prevent 'isHeadless' errors and memory leaks
+        if (cyRef.current) {
+            console.log("🧹 Destroying previous Cytoscape instance...");
+            cyRef.current.destroy();
+            cyRef.current = null;
+        }
+
         // Use stats passed directly to avoid state race conditions in style functions
         const nodeImportance = stats?.node_importance || {};
 
@@ -285,59 +254,60 @@ const VisualizePage = () => {
                         'text-halign': 'center',
                         'color': '#ffffff',
                         'text-outline-color': (ele) => getNodeColor(ele.data('type'), ele.data('color')),
-                        'text-outline-width': 3,
+                        'text-outline-width': 4,
                         'text-outline-opacity': 1,
                         'z-index': 10,
                         'transition-property': 'background-color, width, height, border-width, border-color, background-opacity',
                         'transition-duration': '0.3s',
-                        'ghost': 'yes',
-                        'ghost-offset-x': 0,
-                        'ghost-offset-y': 4,
-                        'ghost-opacity': 0.1
                     }
                 },
                 {
                     selector: 'edge',
                     style: {
-                        'width': (ele) => Math.max(2, (ele.data('weight') || 1) * 3),
-                        'line-color': '#cbd5e1',
-                        'target-arrow-color': '#94a3b8',
+                        'width': (ele) => Math.max(3, (ele.data('weight') || 1) * 2),
+                        'line-color': '#e2e8f0',
+                        'target-arrow-color': '#cbd5e1',
                         'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier',
                         'label': 'data(relation)',
-                        'font-size': '10px',
+                        'font-size': '11px',
                         'font-family': 'Inter, sans-serif',
                         'text-rotation': 'autorotate',
-                        'text-margin-y': -12,
-                        'color': '#475569',
-                        'edge-text-rotation': 'autorotate',
-                        'opacity': 0.6,
-                        'arrow-scale': 1.2
+                        'text-margin-y': -14,
+                        'color': '#64748b',
+                        'font-weight': '500',
+                        'opacity': 0.8,
+                        'arrow-scale': 1.2,
+                        'text-background-opacity': 0.8,
+                        'text-background-color': '#ffffff',
+                        'text-background-padding': '2px',
+                        'text-background-shape': 'roundrectangle'
                     }
                 },
                 {
                     selector: 'node:selected',
                     style: {
-                        'border-width': 6,
+                        'border-width': 10,
                         'border-color': '#ffffff',
-                        'border-opacity': 0.8,
-                        'background-color': '#000000',
-                        'text-outline-color': '#000000'
+                        'border-opacity': 1,
+                        'background-color': '#111827',
+                        'text-outline-color': '#111827',
+                        'z-index': 9999
                     }
                 },
                 {
                     selector: 'node.highlighted',
                     style: {
                         'z-index': 999,
-                        'border-width': 4,
-                        'border-color': '#ffd700',
+                        'border-width': 6,
+                        'border-color': '#fbbf24',
                         'opacity': 1
                     }
                 },
                 {
                     selector: 'node.dimmed',
                     style: {
-                        'opacity': 0.1, // Ghost Mode: Very faint
+                        'opacity': 0.15,
                         'text-opacity': 0.05,
                         'border-color': '#e2e8f0'
                     }
@@ -345,20 +315,23 @@ const VisualizePage = () => {
                 {
                     selector: 'edge.highlighted',
                     style: {
-                        'line-color': '#6366f1',
-                        'target-arrow-color': '#6366f1',
-                        'width': 6,
+                        'line-color': '#4f46e5',
+                        'target-arrow-color': '#4f46e5',
+                        'width': 5,
                         'opacity': 1,
-                        'z-index': 998
+                        'z-index': 998,
+                        'font-size': '12px',
+                        'color': '#4f46e5',
+                        'font-weight': '700'
                     }
                 },
                 {
                     selector: 'node.pulsing',
                     style: {
-                        'border-width': 8,
-                        'border-color': '#ff4757',
+                        'border-width': 12,
+                        'border-color': '#ef4444',
                         'transition-property': 'border-width, border-color',
-                        'transition-duration': '0.5s'
+                        'transition-duration': '0.4s'
                     }
                 }
             ],
@@ -366,13 +339,13 @@ const VisualizePage = () => {
                 name: 'cose',
                 animate: true,
                 animationDuration: 1200,
-                nodeRepulsion: 25000, // Much stronger repulsion
-                idealEdgeLength: 280, // Much longer edges
+                nodeRepulsion: 35000,
+                idealEdgeLength: 180,
                 edgeElasticity: 100,
-                nodeOverlap: 20,
-                gravity: 0.25,
-                numIter: 500,
-                initialTemp: 200,
+                nodeOverlap: 40,
+                gravity: 0.1,
+                numIter: 1000,
+                initialTemp: 300,
                 coolingFactor: 0.95,
                 minTemp: 1.0,
                 randomize: true
@@ -468,6 +441,9 @@ const VisualizePage = () => {
             'RESULTADO': '#10b981',
             'INDICADOR': '#0ea5e9',
             'ESTRATÉGIA': '#f59e0b',
+            'DESCONHECIDO': '#94a3b8',
+            'METODOLOGIA': '#8b5cf6',
+            'FONTE_DADOS': '#06b6d4',
             'Default': communityColor || '#94a3b8'
         };
         const normalizedType = type?.toUpperCase() || 'Default';
@@ -708,107 +684,13 @@ const VisualizePage = () => {
             const finalStages = stages.filter(s => s.text.length > 0 || s.command);
 
             const startNarrative = async () => {
-                console.log('Final Stages:', finalStages);
-
-                // HYBRID STREAMING: Play first, buffer next (eliminates wait time)
-                if (!premiumAudioPresent && isAudioEnabled) {
-                    setIsSpeaking(true);
-
-                    for (let i = 0; i < finalStages.length; i++) {
-                        if (stopRef.current) break;
-
-                        const stage = finalStages[i];
-                        if (!stage.text || stage.text.length === 0) {
-                            // Command-only stage
-                            if (stage.command) {
-                                executeNadiaCommand(stage.command);
-                                await new Promise(r => setTimeout(r, 800));
-                            }
-                            continue;
-                        }
-
-                        const textForTTS = cleanTextForSpeech(stage.text);
-                        if (textForTTS.length === 0) continue;
-
-                        try {
-                            // Execute command immediately (non-blocking)
-                            if (stage.command) {
-                                executeNadiaCommand(stage.command);
-                            }
-
-                            // Generate audio for THIS segment
-                            const ttsResponse = await api.nadiaAudio(textForTTS, voiceMode);
-                            if (ttsResponse.ok) {
-                                const audioBlob = await ttsResponse.blob();
-                                const audio = new Audio(URL.createObjectURL(audioBlob));
-
-                                // Play immediately (no waiting!)
-                                await new Promise((resolve) => {
-                                    audio.onended = resolve;
-                                    audio.onerror = () => {
-                                        console.warn('Audio error');
-                                        resolve();
-                                    };
-                                    audio.play().catch(e => {
-                                        console.warn('Audio playback failed:', e);
-                                        resolve();
-                                    });
-
-                                    // Stop check
-                                    const checkStop = setInterval(() => {
-                                        if (stopRef.current) {
-                                            audio.pause();
-                                            clearInterval(checkStop);
-                                            resolve();
-                                        }
-                                    }, 100);
-                                });
-                            } else {
-                                // Fallback to browser TTS
-                                await new Promise((resolve) => {
-                                    speak(textForTTS, resolve);
-                                });
-                            }
-                        } catch (err) {
-                            console.error('TTS Error:', err);
-                            // Fallback to browser TTS
-                            await new Promise((resolve) => {
-                                speak(textForTTS, resolve);
-                            });
-                        }
-
-                        // Tiny gap between segments
-                        if (i < finalStages.length - 1) {
-                            await new Promise(r => setTimeout(r, 100));
-                        }
+                console.log('Nadia executing commands...', finalStages);
+                for (const stage of finalStages) {
+                    if (stopRef.current) break;
+                    if (stage.command) {
+                        executeNadiaCommand(stage.command);
                     }
-
-                    setIsSpeaking(false);
-                } else if (premiumAudioPresent && isAudioEnabled) {
-                    // Premium mode: use single audio file
-                    for (let i = 0; i < finalStages.length; i++) {
-                        if (stopRef.current) {
-                            if (premiumAudioRef.current) {
-                                premiumAudioRef.current.pause();
-                                premiumAudioRef.current = null;
-                            }
-                            break;
-                        }
-                        const stage = finalStages[i];
-                        if (stage.command) {
-                            executeNadiaCommand(stage.command);
-                        }
-                        await new Promise(r => setTimeout(r, 800));
-                    }
-                } else {
-                    // No audio: just execute commands
-                    for (const stage of finalStages) {
-                        if (stopRef.current) break;
-                        if (stage.command) {
-                            executeNadiaCommand(stage.command);
-                            await new Promise(r => setTimeout(r, 1000));
-                        }
-                    }
+                    await new Promise(r => setTimeout(r, 1200));
                 }
             };
 
@@ -911,106 +793,137 @@ const VisualizePage = () => {
                     {/* Controles Internos */}
                     <div className="space-y-8">
                         <section>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Interatividade</h3>
-                            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                <span className="text-xs font-bold text-slate-600">Mover Vizinhos Junto</span>
+                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Interatividade</h3>
+                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm">
+                                <span className="text-sm font-bold text-slate-700">Mover Grupo (Vizinhos)</span>
                                 <button
                                     onClick={() => setMoveNeighbors(!moveNeighbors)}
-                                    className={`w-10 h-5 rounded-full transition-all relative ${moveNeighbors ? 'bg-brand-primary' : 'bg-slate-300'}`}
+                                    className={`w-12 h-6 rounded-full transition-all relative ${moveNeighbors ? 'bg-brand-primary shadow-lg shadow-brand-primary/30' : 'bg-slate-300'}`}
                                 >
-                                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${moveNeighbors ? 'left-6' : 'left-1'}`} />
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${moveNeighbors ? 'left-7' : 'left-1'}`} />
                                 </button>
                             </div>
                         </section>
 
                         <section>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Layout do Grafo</h3>
+                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Algoritmo de Layout</h3>
                             <div className="grid grid-cols-2 gap-2">
-                                {['cose', 'readingGuide', 'circle', 'grid', 'breadthfirst'].map((l) => (
+                                {[
+                                    { id: 'cose', label: 'Orgânico' },
+                                    { id: 'readingGuide', label: 'Fluxo/Guia' },
+                                    { id: 'circle', label: 'Circular' },
+                                    { id: 'grid', label: 'Grade' },
+                                    { id: 'breadthfirst', label: 'Hirárquico' }
+                                ].map((l) => (
                                     <button
-                                        key={l}
-                                        onClick={() => changeLayout(l)}
-                                        className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:border-brand-primary hover:text-brand-primary transition-all capitalize"
+                                        key={l.id}
+                                        onClick={() => changeLayout(l.id)}
+                                        className="px-4 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-bold hover:border-brand-primary hover:text-brand-primary hover:shadow-md transition-all text-center leading-tight shadow-sm"
                                     >
-                                        {l === 'cose' ? 'Orgânico' : l === 'readingGuide' ? 'Fluxo/Guia' : l === 'breadthfirst' ? 'Árvore' : l}
+                                        {l.label}
                                     </button>
                                 ))}
                             </div>
                         </section>
 
                         <section>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Legenda de Entidades</h3>
-                            <div className="space-y-3">
-                                {graphData?.stats?.entity_types && Object.entries(graphData.stats.entity_types).map(([type, count]) => (
-                                    <div key={type} className="flex items-center justify-between group p-2 hover:bg-slate-50 rounded-lg transition-colors cursor-default">
-                                        <div className="flex items-center">
-                                            <div
-                                                className="w-3 h-3 rounded-full mr-3 shadow-sm"
-                                                style={{ backgroundColor: getNodeColor(type) }}
-                                            />
-                                            <span className="text-sm font-medium text-slate-600 group-hover:text-brand-surface">{type}</span>
+                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Mapeamento de Tipos</h3>
+                            <div className="space-y-1.5">
+                                {graphData?.stats?.entity_types && Object.entries(graphData.stats.entity_types)
+                                    .filter(([type]) => type !== 'DESCONHECIDO' && type !== 'UNKNOWN')
+                                    .map(([type, count]) => (
+                                        <div key={type} className="flex items-center justify-between group p-2.5 hover:bg-slate-50 rounded-xl transition-all cursor-default border border-transparent hover:border-slate-100">
+                                            <div className="flex items-center">
+                                                <div
+                                                    className="w-3.5 h-3.5 rounded-full mr-3.5 shadow-md"
+                                                    style={{ backgroundColor: getNodeColor(type) }}
+                                                />
+                                                <span className="text-sm font-semibold text-slate-700 group-hover:text-brand-surface">{type}</span>
+                                            </div>
+                                            <span className="text-[11px] font-black text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-lg shadow-sm">{count}</span>
                                         </div>
-                                        <span className="text-xs font-bold text-slate-400 bg-white border border-slate-100 px-2 py-0.5 rounded-full">{count}</span>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         </section>
                         <section>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Dados Locais</h3>
-                            <label className="flex items-center justify-center space-x-2 w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer">
+                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Importar Local</h3>
+                            <label className="flex items-center justify-center space-x-2 w-full py-3.5 bg-indigo-50 text-brand-primary rounded-2xl text-[11px] font-black hover:bg-indigo-100 transition-all cursor-pointer shadow-sm border border-indigo-100">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                                <span>Carregar JSON</span>
+                                <span>CARREGAR JSON EXTERNO</span>
                                 <input type="file" accept=".json" onChange={handleFileUpload} className="hidden" />
                             </label>
                         </section>
                     </div>
                 </div>
 
-                {/* Detalhes do Item Selecionado - Floating UI feel */}
+                {/* Detalhes do Item Selecionado - Improved Hierarchy */}
                 {(selectedNode || selectedEdge) && (
-                    <div className="p-6 bg-brand-surface text-white rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom duration-300">
-                        <div className="flex justify-between items-start mb-4">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">
-                                {selectedNode ? 'Entidade Selecionada' : 'Relacionamento'}
+                    <div className="p-8 bg-brand-surface text-white rounded-t-[40px] shadow-2xl animate-in slide-in-from-bottom duration-500 border-t border-white/5">
+                        <div className="flex justify-between items-start mb-6">
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-300">
+                                {selectedNode ? 'Propriedades da Entidade' : 'Propriedades da Relação'}
                             </span>
-                            <button onClick={() => { setSelectedNode(null); setSelectedEdge(null); cyRef.current.$('.highlighted').removeClass('highlighted dimmed'); }} className="text-indigo-300 hover:text-white">✕</button>
+                            <button
+                                onClick={() => {
+                                    setSelectedNode(null);
+                                    setSelectedEdge(null);
+                                    if (cyRef.current) cyRef.current.elements().removeClass('highlighted dimmed');
+                                }}
+                                className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-indigo-200 hover:text-white hover:bg-white/10 transition-all font-bold"
+                            >
+                                ✕
+                            </button>
                         </div>
-                        <h4 className="text-xl font-display font-bold mb-2">
+
+                        <h4 className="text-2xl font-display font-black mb-4 leading-tight tracking-tight">
                             {selectedNode ? selectedNode.label : `${selectedEdge.source} → ${selectedEdge.target}`}
                         </h4>
+
                         {selectedNode && (
-                            <div className="space-y-2">
-                                <p className="text-sm text-indigo-100/70">Tipo: <span className="text-white font-medium">{selectedNode.type}</span></p>
-                                <p className="text-sm text-indigo-100/70">Conexões: <span className="text-white font-medium">{selectedNode.degree}</span></p>
-                                <div className="pt-2 mt-2 border-t border-white/10">
-                                    <span className="text-[10px] font-bold text-indigo-300 uppercase block mb-1">Importância Estrutural</span>
-                                    <div className="flex items-center space-x-2">
-                                        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-brand-primary brightness-150"
-                                                style={{ width: `${(graphData?.stats?.node_importance?.[selectedNode.id] || 0) * 100}%` }}
-                                            />
-                                        </div>
-                                        <span className="text-xs font-bold font-mono">{(graphData?.stats?.node_importance?.[selectedNode.id] || 0).toFixed(2)}</span>
+                            <div className="space-y-4">
+                                <div className="flex items-center space-x-2">
+                                    <div className="px-3 py-1 bg-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-white">
+                                        {selectedNode.type}
+                                    </div>
+                                    <div className="px-3 py-1 bg-white/10 rounded-lg text-[10px] font-black uppercase tracking-wider text-indigo-300">
+                                        Grau: {selectedNode.degree}
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 mt-2 border-t border-white/10">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-none">Score de Importância</span>
+                                        <span className="text-lg font-black font-mono leading-none">{(graphData?.stats?.node_importance?.[selectedNode.id] || 0).toFixed(3)}</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-brand-primary to-indigo-400"
+                                            style={{ width: `${Math.max(5, (graphData?.stats?.node_importance?.[selectedNode.id] || 0) * 100)}%` }}
+                                        />
                                     </div>
                                 </div>
                             </div>
                         )}
+
                         {selectedEdge && (
-                            <p className="text-sm text-indigo-100/70">Relação: <span className="text-white font-medium">{selectedEdge.relation}</span></p>
+                            <div className="space-y-2">
+                                <div className="px-4 py-3 bg-white/10 rounded-2xl border border-white/5 text-sm font-semibold italic text-indigo-100">
+                                    "{selectedEdge.relation}"
+                                </div>
+                            </div>
                         )}
                     </div>
                 )}
 
                 {/* Toolbar Inferior */}
-                <div className="p-4 border-t border-gray-100 grid grid-cols-2 gap-2">
-                    <button onClick={fitGraph} className="flex items-center justify-center space-x-2 py-2.5 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition-all">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                        <span>Centralizar</span>
+                <div className="p-6 border-t border-gray-100 grid grid-cols-2 gap-3 bg-white">
+                    <button onClick={fitGraph} className="flex items-center justify-center space-x-2 py-3.5 bg-slate-50 text-slate-700 rounded-2xl text-xs font-black hover:bg-slate-100 border border-slate-200 transition-all shadow-sm active:scale-95">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                        <span>CENTRALIZAR</span>
                     </button>
-                    <button onClick={exportPNG} className="flex items-center justify-center space-x-2 py-2.5 bg-brand-primary text-white rounded-xl text-xs font-bold hover:bg-brand-secondary transition-all shadow-lg shadow-indigo-100">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        <span>Exportar</span>
+                    <button onClick={exportPNG} className="flex items-center justify-center space-x-2 py-3.5 bg-brand-primary text-white rounded-2xl text-xs font-black hover:bg-brand-secondary transition-all shadow-lg shadow-brand-primary/20 active:scale-95">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        <span>EXPORTAR PNG</span>
                     </button>
                 </div>
 
@@ -1121,41 +1034,10 @@ const VisualizePage = () => {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center space-x-1">
-                                    <button
-                                        onClick={() => {
-                                            const next = voiceMode === 'premium' ? 'local' : 'premium';
-                                            setVoiceMode(next);
-                                            localStorage.setItem('nadiaVoiceMode', next);
-                                        }}
-                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border ${voiceMode === 'premium'
-                                            ? 'bg-indigo-500/20 border-indigo-400 text-indigo-100 hover:bg-indigo-500/30'
-                                            : 'bg-emerald-500/20 border-emerald-400 text-emerald-100 hover:bg-emerald-500/30'
-                                            }`}
-                                        title={voiceMode === 'premium' ? "Mudar para Voz Local (Grátis)" : "Mudar para Voz Premium (OpenAI)"}
-                                    >
-                                        {voiceMode === 'premium' ? 'PREMIUM' : 'GRÁTIS'}
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (isAudioEnabled) window.speechSynthesis.cancel();
-                                            setIsAudioEnabled(!isAudioEnabled);
-                                            localStorage.setItem('nadiaAudioEnabled', !isAudioEnabled);
-                                        }}
-                                        className={`p-2 rounded-xl transition-colors ${isAudioEnabled ? 'bg-white/20 text-white' : 'hover:bg-white/10 text-indigo-300'}`}
-                                        title={isAudioEnabled ? "Desativar voz" : "Ativar voz"}
-                                    >
-                                        {isAudioEnabled ? (
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-                                        ) : (
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                                        )}
-                                    </button>
-                                    <button onClick={() => {
-                                        handleStopNadia();
-                                        setNadiaOpen(false);
-                                    }} className="hover:bg-white/10 p-2 rounded-xl transition-colors text-white">✕</button>
-                                </div>
+                                <button onClick={() => {
+                                    handleStopNadia();
+                                    setNadiaOpen(false);
+                                }} className="hover:bg-white/10 p-2 rounded-xl transition-colors text-white">✕</button>
                             </div>
 
                             {/* Banner de Interrupção */}
@@ -1238,8 +1120,8 @@ const VisualizePage = () => {
                         </button>
                     )}
                 </div>
-            </main >
-        </div >
+            </main>
+        </div>
     );
 };
 
