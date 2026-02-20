@@ -52,17 +52,16 @@ class KGExtractor:
             if user_instructions else ""
         )
 
-        return f"""Você é um arquiteto sênior de grafos especializados em extração TÉCNICA e METODOLÓGICA.
+        return f"""Você é um arquiteto sênior de grafos especializados em extração SEMÂNTICA, TÉCNICA e ESTRUTURAL.
 {user_context_block}
 
-OBJETIVO: Extrair triplas que representam a lógica, matemática e os processos descritos no texto.
+OBJETIVO: Extrair triplas que representam a essência, a lógica, os processos e o CONTEXTO (Épocas, Marcos, Estruturas) do texto.
 
 CADEIA DE ATENÇÃO (Respeite rigorosamente):
-1. ANÁLISE TÉCNICA: Identifique fórmulas, métodos estatísticos, fontes de dados e passos procedimentais. 
-2. FILTRO DE RELEVÂNCIA: Ignore exemplos triviais (ex: tipos de comida, nomes de arquivos, anos genéricos) SE eles não forem o foco da instrução do usuário. 
-   - Se o texto diz "Cálculo do PIB do Repolho", a entidade importante é "REPOLHO" como "PRODUTO" ou "VARIAVEL", não como um "SETOR ECONÔMICO" solto.
+1. ANÁLISE INTEGRAL: Identifique não apenas métodos, mas os PILARES do texto. Se o texto é sobre História, períodos (ex: "Período Pré-Homérico") são ENTIDADES fundamentais.
+2. FILTRO DE RELEVÂNCIA: Ignore ruído (ex: anos isolados como "2024", nomes de arquivos, exemplos triviais de comida), mas NUNCA ignore marcos temporais ou espaciais que definem o assunto.
 3. PADRONIZAÇÃO: Unifique nomes imediatamente. "Secretaria" -> "Secretaria da Fazenda". "Sigla" -> "Nome Completo".
-4. VERIFICAÇÃO DE INSTRUÇÃO: Se o usuário disse "FOQUE EM METODOLOGIA", 80% das suas triplas devem ser sobre métodos, fluxos e indicadores.
+4. EXAUSTIVIDADE: Se um conceito é mencionado como o "coração" de uma seção, ele DEVE ser uma entidade.
 
 ESQUEMA PERMITIDO:
 ENTIDADES: {entities_str}
