@@ -26,18 +26,28 @@ class GraphBuilder:
             if not src or not tgt or not rel:
                 continue
                 
-            # Add nodes with types
+            # Add nodes with types and descriptions
+            src_desc = triple.get("source_desc", "")
+            tgt_desc = triple.get("target_desc", "")
+            
             if src not in G:
-                G.add_node(src, type=triple.get("source_type", "Unknown"))
+                G.add_node(src, type=triple.get("source_type", "Unknown"), description=src_desc)
+            else:
+                # Update description if it's better/longer
+                existing_desc = G.nodes[src].get("description", "")
+                if len(src_desc) > len(existing_desc):
+                    G.nodes[src]["description"] = src_desc
             
             if tgt not in G:
-                G.add_node(tgt, type=triple.get("target_type", "Unknown"))
+                G.add_node(tgt, type=triple.get("target_type", "Unknown"), description=tgt_desc)
+            else:
+                existing_desc = G.nodes[tgt].get("description", "")
+                if len(tgt_desc) > len(existing_desc):
+                    G.nodes[tgt]["description"] = tgt_desc
                 
             # Add edge (update weight if exists)
             if G.has_edge(src, tgt):
-                # Check if this specific relation exists
                 edge_data = G.get_edge_data(src, tgt)
-                # Simple weight increment for now
                 if edge_data.get("relation") == rel:
                     G[src][tgt]['weight'] = edge_data.get('weight', 1) + 1
             else:

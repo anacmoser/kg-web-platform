@@ -100,7 +100,7 @@ class PipelineOrchestrator:
         
         return public_job
 
-    def _update_job_usage(self, job: Dict[str, Any], usage: Dict[str, Any]):
+    def _update_job_usage(self, job: Dict[str, Any], usage: Dict[str, Any], model_override: str = None):
         """
         Updates job token usage and calculates cumulative cost.
         """
@@ -111,7 +111,7 @@ class PipelineOrchestrator:
         job["usage"]["output_tokens"] += usage.get("completion_tokens", 0)
         
         # Calculate cost
-        model = settings.OPENAI_MODEL
+        model = model_override or settings.OPENAI_MODEL
         pricing = settings.MODEL_PRICING.get(model, (0.0, 0.0))
         
         input_cost = (job["usage"]["input_tokens"] / 1_000_000) * pricing[0]
@@ -175,7 +175,7 @@ class PipelineOrchestrator:
                     user_instructions=config.get("user_instructions", "")
                 )
                 triples = kg_res.get("triples", [])
-                self._update_job_usage(job, kg_res.get("usage", {}))
+                self._update_job_usage(job, kg_res.get("usage", {}), model_override=kg_res.get("model"))
                 
                 all_triples.extend(triples)
                 # Granular updates: 0.40 to 0.85

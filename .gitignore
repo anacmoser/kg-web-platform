@@ -49,6 +49,16 @@ brain/
 walkthrough.md
 task.md
 implementation_plan.md
+refatoracao-kg.md
+checklist.md
+*.md
+
+# Scripts & Checks
+verify_*.py
+test_*.py
+check_*.py
+generate_*.py
+scripts/
 
 # Large Model Files
 backend/*.onnx

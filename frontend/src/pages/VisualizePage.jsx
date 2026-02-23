@@ -3,9 +3,13 @@ import cytoscape from 'cytoscape';
 import { api } from '../api/client';
 import { LoadingSpinner, ErrorAlert, StatCard } from '../components/SharedComponents';
 
-const VisualizePage = () => {
-    const [graphData, setGraphData] = useState(null);
-    const [loading, setLoading] = useState(true);
+const VisualizePage = ({ globalGraphData, globalJobId, setGlobalGraphData, setGlobalJobId }) => {
+    const graphData = globalGraphData;
+    const setGraphData = setGlobalGraphData;
+    const jobId = globalJobId;
+    const setJobId = setGlobalJobId;
+
+    const [loading, setLoading] = useState(!globalGraphData);
     const [error, setError] = useState(null);
     const [selectedNode, setSelectedNode] = useState(null);
     const [selectedEdge, setSelectedEdge] = useState(null);
@@ -17,7 +21,6 @@ const VisualizePage = () => {
         moveNeighborsRef.current = val;
     };
     const [nadiaOpen, setNadiaOpen] = useState(false);
-    const [jobId, setJobId] = useState(null);
     const [chatMessages, setChatMessages] = useState([
         { role: 'assistant', content: 'Olá! Eu sou a Nadia. Como posso ajudar você a explorar este grafo hoje?' }
     ]);
@@ -196,10 +199,22 @@ const VisualizePage = () => {
         cy.on('tap', 'node', (evt) => {
             if (evt.target.data('isParent')) return;
             setSelectedNode(evt.target.data());
+            setSelectedEdge(null);
             cy.elements().removeClass('highlighted dimmed');
             evt.target.addClass('highlighted');
             evt.target.neighborhood().addClass('highlighted');
             cy.elements().not(evt.target.neighborhood().union(evt.target)).addClass('dimmed');
+        });
+
+        cy.on('tap', 'edge', (evt) => {
+            setSelectedEdge(evt.target.data());
+            setSelectedNode(null);
+            cy.elements().removeClass('highlighted dimmed');
+            evt.target.addClass('highlighted');
+            evt.target.source().addClass('highlighted');
+            evt.target.target().addClass('highlighted');
+            const highlightedElements = evt.target.union(evt.target.source()).union(evt.target.target());
+            cy.elements().not(highlightedElements).addClass('dimmed');
         });
 
         cy.on('tap', (evt) => {
@@ -296,6 +311,11 @@ const VisualizePage = () => {
     };
 
     useEffect(() => {
+        if (globalGraphData) {
+            setLoading(false);
+            setTimeout(() => initializeCytoscape(globalGraphData.graph, globalGraphData.stats), 100);
+            return;
+        }
         const params = new URLSearchParams(window.location.search);
         const jid = params.get('job');
         if (jid) {
@@ -304,7 +324,7 @@ const VisualizePage = () => {
         } else {
             setLoading(false);
         }
-    }, []);
+    }, [globalGraphData]);
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -559,7 +579,32 @@ const VisualizePage = () => {
                         <input type="text" placeholder="Pesquisar..." value={searchTerm} onChange={(e) => handleSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none" />
                     </div>
                     <ErrorAlert message={error} onDismiss={() => setError(null)} />
-                    {graphData?.stats && (
+                    {selectedNode && (
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-brand-primary/20 mb-6">
+                            <h3 className="font-bold text-lg text-slate-800 mb-1">{selectedNode.label}</h3>
+                            <span className="inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md text-white bg-brand-primary mb-3">
+                                {selectedNode.type}
+                            </span>
+                            {selectedNode.description && (
+                                <p className="text-sm text-slate-600 mb-2 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <strong className="block text-xs uppercase text-slate-400 mb-1">Contexto:</strong>
+                                    {selectedNode.description}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                    {selectedEdge && (
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-brand-primary/20 mb-6">
+                            <h3 className="font-bold text-sm text-slate-500 uppercase tracking-widest mb-2">Relacionamento</h3>
+                            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2">
+                                <span className="text-sm font-semibold truncate max-w-[40%] text-brand-primary">{selectedEdge.source}</span>
+                                <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded whitespace-nowrap">{selectedEdge.relation}</span>
+                                <span className="text-sm font-semibold truncate max-w-[40%] text-brand-accent">{selectedEdge.target}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {graphData?.stats && !selectedNode && !selectedEdge && (
                         <div className="space-y-6 mb-8">
                             <div className="grid grid-cols-2 gap-3">
                                 <StatCard label="Densidade" value={graphData.stats.density.toFixed(3)} />
@@ -571,9 +616,16 @@ const VisualizePage = () => {
                         <section>
                             <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-4">Algoritmo de Layout</h3>
                             <div className="grid grid-cols-2 gap-2">
-                                {['cose', 'readingGuide', 'typeGroup', 'circle', 'grid', 'breadthfirst'].map((id) => (
-                                    <button key={id} onClick={() => changeLayout(id)} className="px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[11px] font-bold hover:border-brand-primary hover:text-brand-primary transition-all">
-                                        {id === 'typeGroup' ? 'Agrupar por Tipo' : id}
+                                {[
+                                    { id: 'cose', label: 'Dinâmico' },
+                                    { id: 'readingGuide', label: 'Leitura' },
+                                    { id: 'typeGroup', label: 'Por Tipo' },
+                                    { id: 'circle', label: 'Círculo' },
+                                    { id: 'grid', label: 'Grade' },
+                                    { id: 'breadthfirst', label: 'Árvore' }
+                                ].map((layout) => (
+                                    <button key={layout.id} onClick={() => changeLayout(layout.id)} className="px-4 py-3 bg-white border border-slate-200 rounded-2xl text-[11px] font-bold hover:border-brand-primary hover:text-brand-primary transition-all">
+                                        {layout.label}
                                     </button>
                                 ))}
                             </div>

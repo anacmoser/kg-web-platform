@@ -3,17 +3,21 @@ import { api } from '../api/client';
 import { LoadingSpinner, ErrorAlert } from '../components/SharedComponents';
 import JobRepository from '../components/JobRepository';
 
-const OntologyPage = () => {
+const OntologyPage = ({ globalGraphData, globalJobId }) => {
     const [ontology, setOntology] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
+        if (globalJobId) {
+            loadOntology(globalJobId);
+            return;
+        }
+
         const params = new URLSearchParams(window.location.search);
         let jobId = params.get('job');
 
-        // If no job in URL, try localStorage (persisted from VisualizePage)
         if (!jobId) {
             jobId = localStorage.getItem('lastJobId');
         }
@@ -23,7 +27,7 @@ const OntologyPage = () => {
         } else {
             setLoading(false);
         }
-    }, []);
+    }, [globalJobId]);
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];

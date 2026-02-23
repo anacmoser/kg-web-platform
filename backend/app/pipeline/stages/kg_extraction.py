@@ -55,13 +55,13 @@ class KGExtractor:
         return f"""Você é um arquiteto sênior de grafos especializados em extração SEMÂNTICA, TÉCNICA e ESTRUTURAL.
 {user_context_block}
 
-OBJETIVO: Extrair triplas que representam a essência, a lógica, os processos e o CONTEXTO (Épocas, Marcos, Estruturas) do texto.
+OBJETIVO: Extrair triplas que representam a essência, a lógica, os processos e o CONTEXTO (Épocas, Marcos, Estruturas) do texto, considerando as informações como parte de um todo.
 
 CADEIA DE ATENÇÃO (Respeite rigorosamente):
-1. ANÁLISE INTEGRAL: Identifique não apenas métodos, mas os PILARES do texto. Se o texto é sobre História, períodos (ex: "Período Pré-Homérico") são ENTIDADES fundamentais.
-2. FILTRO DE RELEVÂNCIA: Ignore ruído (ex: anos isolados como "2024", nomes de arquivos, exemplos triviais de comida), mas NUNCA ignore marcos temporais ou espaciais que definem o assunto.
-3. PADRONIZAÇÃO: Unifique nomes imediatamente. "Secretaria" -> "Secretaria da Fazenda". "Sigla" -> "Nome Completo".
-4. EXAUSTIVIDADE: Se um conceito é mencionado como o "coração" de uma seção, ele DEVE ser uma entidade.
+1. ANÁLISE INTEGRAL: Identifique não apenas métodos, mas os PILARES do texto. Se o texto for sobre História, datas, períodos ou pessoas SÃO fundamentais, mesmo que sejam números ou nomes. Caso contrário, evite extrair números soltos que não tenham peso semântico. Analise o contexto de forma holística.
+2. FILTRO DE RELEVÂNCIA: Ignore ruído (nomes de arquivos estáticos, textos incompletos de formatação), mas NUNCA ignore marcos temporais ou espaciais que definem o assunto.
+3. PADRONIZAÇÃO & DESDUPLICAÇÃO: Unifique entidades que são a mesma coisa. "Secretaria" -> "Secretaria da Fazenda". Nunca crie entidades duplicadas sob sinônimos. Extraia o nome mais formal.
+4. EXAUSTIVIDADE & DESCRIÇÃO: Toda entidade deve receber um BREVE resumo de 1 ou 2 frases curtas (`source_desc`/`target_desc`) explicando quem ou o que ela é DENTRO DESTE EXATO CONTEXTO do documento analisado.
 
 ESQUEMA PERMITIDO:
 ENTIDADES: {entities_str}
@@ -69,17 +69,25 @@ RELAÇÕES: {relations_str}
 
 REGRAS FINAIS:
 - Proibido triplas genéricas (A está_relacionado_a B).
-- Proibido source == target.
-- Use nomes canônicos e técnicos.
+- Proibido source == target e loops diretos vagos.
+- Evite extrações fragmentadas e números flutuantes irrelevantes. Use lógica rigorosa.
 
 TEXTO:
 {chunk["text"]}
 
-RETORNE APENAS JSON:
+RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
 {{
-  "chain_of_thought": "Passo 1: Identifiquei o método X. Passo 2: Verifiquei que 'tomate' é apenas um parâmetro da equação Y. Passo 3: Segui a regra de ignorar locais.",
+  "chain_of_thought": "Passo 1: Identifiquei o método X... Passo 2: Notei a instrução do usuário...",
   "triples": [
-    {{"source": "Nome Técnico", "source_type": "TIPO", "target": "Nome Técnico", "target_type": "TIPO", "relation": "verbo_infinitivo"}}
+    {{
+      "source": "Nome Técnico e Unificado", 
+      "source_type": "TIPO", 
+      "source_desc": "Breve resumo sobre esta entidade neste contexto...",
+      "target": "Nome Técnico ou Valor Crucial", 
+      "target_type": "TIPO", 
+      "target_desc": "Breve resumo construtor do papel dessa entidade...",
+      "relation": "verbo_infinitivo"
+    }}
   ]
 }}
 """
@@ -95,10 +103,13 @@ RETORNE APENAS JSON:
         """
         prompt = self._build_prompt(chunk, ontology, user_instructions)
         valid_types = {e["name"].upper() for e in ontology.get("entities", [])}
+        
+        # Upgrade model if custom instructions are provided to guarantee adherence
+        processing_model = "gpt-4o" if user_instructions else self.model
 
         try:
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=processing_model,
                 messages=[
                     {
                         "role": "system",
@@ -139,7 +150,7 @@ RETORNE APENAS JSON:
                 f"Chunk {chunk.get('index', '?')}: "
                 f"{len(raw_triples)} raw → {len(validated)} valid triples"
             )
-            return {"triples": validated, "usage": usage}
+            return {"triples": validated, "usage": usage, "model": processing_model}
 
         except Exception as e:
             logger.error(f"KG extraction failed for chunk {chunk.get('index')}: {e}")
@@ -178,6 +189,8 @@ RETORNE APENAS JSON:
             relation = str(t.get("relation", "")).strip().lower().replace(" ", "_")
             source_type = str(t.get("source_type", "")).strip().upper()
             target_type = str(t.get("target_type", "")).strip().upper()
+            source_desc = str(t.get("source_desc", "")).strip()
+            target_desc = str(t.get("target_desc", "")).strip()
 
             # Required fields check
             if not source or not target or not relation:
@@ -189,6 +202,9 @@ RETORNE APENAS JSON:
 
             # Entity quality check: no pure numbers, too short, or banned words
             if self._is_bad_entity(source, BANNED_PATTERNS):
+                # Don't throw away dates/years completely if user specifically asked for them.
+                # However we rely on the LLM to structure them with a solid prefix/suffix 
+                # instead of just "1994". E.g. "Ano 1994". This check is a soft guard.
                 logger.debug(f"Rejected entity (source): '{source}'")
                 continue
             if self._is_bad_entity(target, BANNED_PATTERNS):
@@ -220,11 +236,6 @@ RETORNE APENAS JSON:
                         if fallback in valid_types:
                             return fallback
                             
-                    # If truly unrelated, we'll keep it as the original string to avoid data loss,
-                    # but mark it for cleaner display. 
-                    # Actually, user prefers NO 'unknown', so we'll pick the first valid type 
-                    # as a last resort if it's essential, or just discard it if it's noise.
-                    # For now, let's use the first available type or "ENTIDADE" if it exists.
                     if "CONCEITO" in valid_types: return "CONCEITO"
                     return list(valid_types)[0] if valid_types else "ENTIDADE"
 
@@ -240,8 +251,10 @@ RETORNE APENAS JSON:
             validated.append({
                 "source": source,
                 "source_type": source_type,
+                "source_desc": source_desc,
                 "target": target,
                 "target_type": target_type,
+                "target_desc": target_desc,
                 "relation": relation
             })
 

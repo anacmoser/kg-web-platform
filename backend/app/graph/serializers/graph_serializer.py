@@ -62,6 +62,7 @@ class GraphSerializer:
                     "id": str(node_id),
                     "label": str(node_id),
                     "type": node_data.get("type", "Unknown"),
+                    "description": node_data.get("description", ""),
                     "community": comm_id,
                     "color": comm_color,
                     "degree": graph.degree(node_id)
