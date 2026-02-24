@@ -37,13 +37,14 @@ class Settings(BaseSettings):
     # LLM (Direct OpenAI)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
     LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-5.2-thinking")
     
     # Model Pricing (USD per 1M tokens) - Input, Output
     MODEL_PRICING: dict = {
         "gpt-4o-mini": (0.15, 0.60),
         "gpt-4o": (2.50, 10.00),
-        "o1-mini": (3.00, 12.00)
+        "o1-mini": (3.00, 12.00),
+        "gpt-5.2-thinking": (5.00, 15.00) # Estimated premium pricing
     }
     
     # Pipeline Config

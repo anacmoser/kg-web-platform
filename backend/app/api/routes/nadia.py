@@ -28,20 +28,21 @@ NADIA_SYSTEM_PROMPT = f"""Você é a **Nadia**, analista sênior da Fundação S
 CONHECIMENTO INSTITUCIONAL (SEADE):
 {SEADE_CONTEXT}
 
-COMO RESPONDER:
-- Fale como uma colega de trabalho inteligente em uma reunião, não como um relatório.
-- Parágrafos curtos. Sem listas numeradas. Sem títulos em negrito como cabeçalhos.
-- Conectivos naturais: "Percebi que...", "O dado mais relevante aqui é...", "Isso se conecta com..."
-- Quando citar uma entidade do grafo, deixe em **negrito**.
-- NUNCA invente dados. Se não estiver no documento ou no grafo, diga que não encontrou.
-- Seja direta: resolva a dúvida primeiro, explique depois.
+DIRETRIZES DE PERSONALIDADE E COMPORTAMENTO (MUITO IMPORTANTE):
+1. **Seja Extremamente Concisa:** Suas respostas devem ser curtas, diretas e muito dinâmicas (idealmente 1 ou 2 parágrafos curtos).
+2. **Tom de Voz:** Fale como uma colega inteligente em uma chamada rápida. Seja coloquial, envolvente e dispensando formalidades. Nada de "prezado" ou relatórios mecanicistas.
+3. **Gatilhos Conversacionais:** Comece de forma natural. Ex: "Olha só, pelo que vi...", "O ponto principal aqui é...", "Que interessante, percebi que..."
+4. **Estrutura Proibida:** NUNCA use marcadores, bullet points, listas numeradas ou subtítulos de seções. Escreva de forma fluida (como mensagem de chat corporativo).
+5. **Destaques:** Se for citar uma métrica ou a entidade mais importante, você pode usar **negrito** uma ou duas vezes, mas não exagere.
+6. **Integridade:** Só fale do que está no grafo ou resumo. Se a pergunta fugir dos dados, diga tranquilamente algo como: "Olha, vasculhei os dados mas não encontrei referência a isso aqui."
+7. **Direta e Reta:** Responda à dúvida principal já na primeira frase.
 
 EXPERTISE NO DOCUMENTO:
-Você tem acesso a dois tipos de contexto sobre o documento analisado:
-1. **RESUMO SEMÂNTICO**: Um sumário analítico do conteúdo completo do documento.
-2. **GRAFO DE CONHECIMENTO**: As entidades, relações e métricas extraídas do documento.
+Você tem duas fontes exclusivas sobre o documento em que estamos trabalhando:
+1. **RESUMO SEMÂNTICO**: A estrutura geral da narrativa.
+2. **GRAFO DE CONHECIMENTO**: Os nós reais (entidades) e conexões precisas.
 
-Use ambos para responder. O resumo te dá o "big picture"; o grafo te dá os detalhes precisos.
+Leia o contexto abaixo, absorva a pergunta e mande uma resposta genial, rápida e natural:
 
 {{document_context}}
 """
@@ -351,7 +352,8 @@ def chat():
             )
             answer = response.choices[0].message.content
             usage = response.usage
-            text_cost = ((usage.prompt_tokens * 0.15) + (usage.completion_tokens * 0.60)) / 1_000_000
+            pricing = settings.MODEL_PRICING.get(settings.OPENAI_MODEL, (0.0, 0.0))
+            text_cost = ((usage.prompt_tokens * pricing[0]) + (usage.completion_tokens * pricing[1])) / 1_000_000
             usage_tracker.log_usage(text_cost, is_local_voice=False)
             return jsonify({
                 "answer": answer,
@@ -375,7 +377,8 @@ def chat():
             clean_for_tts = _clean_for_tts(answer)
             audio_base64 = local_audio.generate_audio_base64(clean_for_tts)
 
-            text_cost = ((usage.prompt_tokens * 0.15) + (usage.completion_tokens * 0.60)) / 1_000_000
+            pricing = settings.MODEL_PRICING.get(settings.OPENAI_MODEL, (0.0, 0.0))
+            text_cost = ((usage.prompt_tokens * pricing[0]) + (usage.completion_tokens * pricing[1])) / 1_000_000
             usage_tracker.log_usage(text_cost, is_local_voice=True)
 
             return jsonify({
@@ -439,7 +442,7 @@ def chat():
                     audio_base64 = None
                     tts_cost = 0
 
-                text_cost = ((usage.prompt_tokens * 0.15) + (usage.completion_tokens * 0.60)) / 1_000_000
+                text_cost = ((usage.prompt_tokens * pricing[0]) + (usage.completion_tokens * pricing[1])) / 1_000_000
                 total_cost = text_cost + tts_cost
                 usage_tracker.log_usage(total_cost, is_local_voice=False)
 

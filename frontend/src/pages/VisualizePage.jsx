@@ -542,6 +542,23 @@ const VisualizePage = ({ globalGraphData, globalJobId, setGlobalGraphData, setGl
         } finally { setIsThinking(false); }
     };
 
+    const formatChatMessage = (text) => {
+        if (!text) return null;
+        return text.split('\n').map((line, lineIndex) => (
+            <React.Fragment key={lineIndex}>
+                {line.split(/(\*\*.*?\*\*|\*.*?\*)/g).map((part, partIndex) => {
+                    if (part.startsWith('**') && part.endsWith('**')) {
+                        return <strong key={partIndex} className="font-bold text-inherit">{part.slice(2, -2)}</strong>;
+                    } else if (part.startsWith('*') && part.endsWith('*')) {
+                        return <em key={partIndex} className="italic text-inherit">{part.slice(1, -1)}</em>;
+                    }
+                    return <span key={partIndex}>{part}</span>;
+                })}
+                {lineIndex < text.split('\n').length - 1 && <br />}
+            </React.Fragment>
+        ));
+    };
+
     if (!graphData && !loading) {
         return (
             <div className="max-w-4xl mx-auto px-6 py-20 text-center">
@@ -664,7 +681,7 @@ const VisualizePage = ({ globalGraphData, globalJobId, setGlobalGraphData, setGl
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[85%] p-4 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-brand-primary text-white' : 'bg-white shadow-sm'}`}>
-                                            {msg.content}
+                                            {formatChatMessage(msg.content)}
                                         </div>
                                     </div>
                                 ))}
