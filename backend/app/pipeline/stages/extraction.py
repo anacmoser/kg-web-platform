@@ -3,7 +3,9 @@ import base64
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import pandas as pd
-from docling.document_converter import DocumentConverter
+import fitz  # PyMuPDF
+import pymupdf4llm
+from docx import Document
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from app.config import settings
@@ -11,48 +13,79 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 class DocumentExtractor:
-    """Handles extraction from heterogeneous document sources using Docling for structural precision."""
+    """Handles extraction from heterogeneous document sources using PyMuPDF and python-docx."""
     
     def __init__(self):
-        # Docling handles multiple formats (PDF, DOCX, HTML, etc)
-        self.converter = DocumentConverter()
         # Keep vision model for specialized image deep-dive if needed
         self.vision_model = ChatOpenAI(model="gpt-4o", max_tokens=300)
         
     def extract(self, file_path: Path, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Extracting content into a standardized format using Docling.
+        Extracting content into a standardized format.
         """
         config = config or {}
         ext = file_path.suffix.lower()
         
         try:
-            # Special handling for CSV as pandas is more direct for plain data
             if ext == '.csv':
                 return self._extract_csv(file_path)
-            
-            logger.info(f"Using Docling to extract {file_path}")
-            result = self.converter.convert(str(file_path))
-            
-            # Export to markdown to preserve H1, H2, Tables, and Lists for the KG
-            text_content = result.document.export_to_markdown()
-            
-            # Additional structural metadata can be added here from result.document
-            
-            return {
-                "text": text_content,
-                "metadata": {
-                    "filename": file_path.name,
-                    "type": ext.replace('.', ''),
-                    "engine": "docling",
-                    "pages": getattr(result.document, 'num_pages', 0)
-                },
-                "type": ext.replace('.', '')
-            }
+            elif ext == '.pdf':
+                return self._extract_pdf(file_path)
+            elif ext in ['.docx', '.doc']:
+                return self._extract_docx(file_path)
+            else:
+                # Fallback to plain text for unknown formats
+                return self._extract_text(file_path)
 
         except Exception as e:
             logger.error(f"Extraction failed for {file_path}: {e}")
             raise
+
+    def _extract_pdf(self, file_path: Path) -> Dict[str, Any]:
+        logger.info(f"Using PyMuPDF4LLM to extract {file_path}")
+        md_text = pymupdf4llm.to_markdown(str(file_path))
+        
+        # Get page count using base pymupdf
+        doc = fitz.open(str(file_path))
+        num_pages = len(doc)
+        doc.close()
+        
+        return {
+            "text": md_text,
+            "metadata": {
+                "filename": file_path.name,
+                "type": "pdf",
+                "engine": "pymupdf4llm",
+                "pages": num_pages
+            },
+            "type": "pdf"
+        }
+
+    def _extract_docx(self, file_path: Path) -> Dict[str, Any]:
+        logger.info(f"Using python-docx to extract {file_path}")
+        doc = Document(file_path)
+        full_text = []
+        for para in doc.paragraphs:
+            # Basic markdown-like conversion
+            if para.style.name.startswith('Heading'):
+                level = para.style.name.split()[-1]
+                if level.isdigit():
+                    prefix = '#' * int(level) + ' '
+                else:
+                    prefix = '# '
+                full_text.append(prefix + para.text)
+            else:
+                full_text.append(para.text)
+        
+        return {
+            "text": "\n\n".join(full_text),
+            "metadata": {
+                "filename": file_path.name,
+                "type": "docx",
+                "engine": "python-docx"
+            },
+            "type": "docx"
+        }
 
     def _extract_csv(self, path: Path) -> Dict[str, Any]:
         logger.info(f"Extracting CSV from {path}")
@@ -71,6 +104,19 @@ class DocumentExtractor:
             "text": text_repr,
             "metadata": {"columns": list(df.columns), "rows": len(df)},
             "type": "csv"
+        }
+
+    def _extract_text(self, path: Path) -> Dict[str, Any]:
+        logger.info(f"Extracting plain text from {path}")
+        try:
+            text = path.read_text(encoding='utf-8')
+        except UnicodeDecodeError:
+            text = path.read_text(encoding='latin1')
+            
+        return {
+            "text": text,
+            "metadata": {"filename": path.name},
+            "type": "txt"
         }
 
     def _describe_image(self, image_bytes: bytes) -> str:
