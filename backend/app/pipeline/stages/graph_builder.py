@@ -26,24 +26,28 @@ class GraphBuilder:
             if not src or not tgt or not rel:
                 continue
                 
-            # Add nodes with types and descriptions
+            # Add nodes with types, descriptions and dynamic attributes
             src_desc = triple.get("source_desc", "")
             tgt_desc = triple.get("target_desc", "")
+            src_attrs = triple.get("source_attributes", {})
+            tgt_attrs = triple.get("target_attributes", {})
             
-            if src not in G:
-                G.add_node(src, type=triple.get("source_type", "Unknown"), description=src_desc)
-            else:
-                # Update description if it's better/longer
-                existing_desc = G.nodes[src].get("description", "")
-                if len(src_desc) > len(existing_desc):
-                    G.nodes[src]["description"] = src_desc
-            
-            if tgt not in G:
-                G.add_node(tgt, type=triple.get("target_type", "Unknown"), description=tgt_desc)
-            else:
-                existing_desc = G.nodes[tgt].get("description", "")
-                if len(tgt_desc) > len(existing_desc):
-                    G.nodes[tgt]["description"] = tgt_desc
+            def add_or_update_node(node_id: str, ntype: str, ndesc: str, nattrs: dict):
+                if node_id not in G:
+                    G.add_node(node_id, type=ntype, description=ndesc, **nattrs)
+                else:
+                    # Update description if it's better/longer
+                    existing_desc = G.nodes[node_id].get("description", "")
+                    if len(ndesc) > len(existing_desc):
+                        G.nodes[node_id]["description"] = ndesc
+                    
+                    # Merge attributes
+                    for k, v in nattrs.items():
+                        if k not in G.nodes[node_id] or not G.nodes[node_id][k]:
+                            G.nodes[node_id][k] = v
+
+            add_or_update_node(src, triple.get("source_type", "Unknown"), src_desc, src_attrs)
+            add_or_update_node(tgt, triple.get("target_type", "Unknown"), tgt_desc, tgt_attrs)
                 
             # Add edge (update weight if exists)
             if G.has_edge(src, tgt):

@@ -57,16 +57,25 @@ class GraphSerializer:
             comm_id = community_map.get(node_id, 0)
             comm_color = get_community_color(comm_id, num_communities)
             
+            # Base attributes
+            node_data_payload = {
+                "id": str(node_id),
+                "label": str(node_id),
+                "type": node_data.get("type", "Unknown"),
+                "description": node_data.get("description", ""),
+                "community": comm_id,
+                "color": comm_color,
+                "degree": graph.degree(node_id)
+            }
+            
+            # Add dynamic attributes (excluding already mapped fields)
+            for k, v in node_data.items():
+                if k not in ["type", "description"]:
+                    if k not in node_data_payload: # Don't overwrite calculated fields
+                        node_data_payload[k] = v
+            
             node_element = {
-                "data": {
-                    "id": str(node_id),
-                    "label": str(node_id),
-                    "type": node_data.get("type", "Unknown"),
-                    "description": node_data.get("description", ""),
-                    "community": comm_id,
-                    "color": comm_color,
-                    "degree": graph.degree(node_id)
-                }
+                "data": node_data_payload
             }
             nodes.append(node_element)
         

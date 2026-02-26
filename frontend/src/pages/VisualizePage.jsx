@@ -597,16 +597,30 @@ const VisualizePage = ({ globalGraphData, globalJobId, setGlobalGraphData, setGl
                     </div>
                     <ErrorAlert message={error} onDismiss={() => setError(null)} />
                     {selectedNode && (
-                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-brand-primary/20 mb-6">
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-brand-primary/20 mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
                             <h3 className="font-bold text-lg text-slate-800 mb-1">{selectedNode.label}</h3>
                             <span className="inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md text-white bg-brand-primary mb-3">
                                 {selectedNode.type}
                             </span>
+
+                            {/* Atributos Dinâmicos */}
+                            <div className="space-y-2 mb-4">
+                                {Object.entries(selectedNode)
+                                    .filter(([key]) => !['id', 'label', 'type', 'description', 'community', 'color', 'degree', 'source_attributes', 'target_attributes'].includes(key))
+                                    .map(([key, value]) => (
+                                        <div key={key} className="flex flex-col bg-slate-50/50 p-2 rounded-lg border border-slate-100">
+                                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider font-mono">{key.replace(/_/g, ' ')}</span>
+                                            <span className="text-xs font-semibold text-slate-700">{String(value)}</span>
+                                        </div>
+                                    ))
+                                }
+                            </div>
+
                             {selectedNode.description && (
-                                <p className="text-sm text-slate-600 mb-2 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <strong className="block text-xs uppercase text-slate-400 mb-1">Contexto:</strong>
+                                <div className="text-sm text-slate-600 mb-2 leading-relaxed bg-brand-primary/5 p-3 rounded-xl border border-brand-primary/10">
+                                    <strong className="block text-[10px] uppercase text-brand-primary/60 font-black mb-1 tracking-widest">Resumo Detalhado</strong>
                                     {selectedNode.description}
-                                </p>
+                                </div>
                             )}
                         </div>
                     )}

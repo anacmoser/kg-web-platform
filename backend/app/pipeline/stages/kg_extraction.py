@@ -55,13 +55,19 @@ class KGExtractor:
         return f"""Você é um arquiteto sênior de grafos especializados em extração SEMÂNTICA, TÉCNICA e ESTRUTURAL.
 {user_context_block}
 
-OBJETIVO: Extrair triplas que representam a essência, a lógica, os processos e o CONTEXTO (Épocas, Marcos, Estruturas) do texto, considerando as informações como parte de um todo.
+OBJETIVO: Extrair triplas que representam a essência, a lógica, os processos e o CONTEXTO (Épocas, Marcos, Estruturas) do texto.
 
 CADEIA DE ATENÇÃO (Respeite rigorosamente):
-1. ANÁLISE INTEGRAL: Identifique não apenas métodos, mas os PILARES do texto. Se o texto for sobre História, datas, períodos ou pessoas SÃO fundamentais, mesmo que sejam números ou nomes. Caso contrário, evite extrair números soltos que não tenham peso semântico. Analise o contexto de forma holística.
-2. FILTRO DE RELEVÂNCIA: Ignore ruído (nomes de arquivos estáticos, textos incompletos de formatação), mas NUNCA ignore marcos temporais ou espaciais que definem o assunto.
-3. PADRONIZAÇÃO & DESDUPLICAÇÃO: Unifique entidades que são a mesma coisa. "Secretaria" -> "Secretaria da Fazenda". Nunca crie entidades duplicadas sob sinônimos. Extraia o nome mais formal.
-4. EXAUSTIVIDADE & DESCRIÇÃO: Toda entidade deve receber um BREVE resumo de 1 ou 2 frases curtas (`source_desc`/`target_desc`) explicando quem ou o que ela é DENTRO DESTE EXATO CONTEXTO do documento analisado.
+1. ANÁLISE INTEGRAL: Identifique não apenas métodos, mas os PILARES do texto. Analise o contexto de forma holística.
+2. FILTRO DE RELEVÂNCIA: Ignore ruído técnico de formatação, mas capture marcos que definem o assunto.
+3. PADRONIZAÇÃO: Unifique entidades que são a mesma coisa usando nomes formais.
+4. ATRIBUTOS DINÂMICOS: Para cada entidade, identifique atributos relevantes conforme o tipo e o contexto. 
+   - Exemplos (adapte conforme necessário): 
+     * PESSOA: idade, cargo, função principal, afiliação.
+     * ORGANIZACAO: área de atuação, sede, importância estratégica, tipo (pública/privada).
+     * METODOLOGIA: complexidade, precisão, requisitos, ferramentas bases.
+     * INDICADOR: unidade, frequência de atualização, relevância econômica.
+5. RESUMO DE ALTA PRECISÃO: Toda entidade deve ter uma descrição detalhada (`source_desc`/`target_desc`) de 2 a 4 frases completas, explicando sua função específica, importância e como ela se encaixa no cenário descrito no documento. Evite descrições genéricas.
 
 ESQUEMA PERMITIDO:
 ENTIDADES: {entities_str}
@@ -69,23 +75,24 @@ RELAÇÕES: {relations_str}
 
 REGRAS FINAIS:
 - Proibido triplas genéricas (A está_relacionado_a B).
-- Proibido source == target e loops diretos vagos.
-- Evite extrações fragmentadas e números flutuantes irrelevantes. Use lógica rigorosa.
+- Proibido source == target.
 
 TEXTO:
 {chunk["text"]}
 
 RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
 {{
-  "chain_of_thought": "Passo 1: Identifiquei o método X... Passo 2: Notei a instrução do usuário...",
+  "chain_of_thought": "Análise sobre como os atributos foram mapeados...",
   "triples": [
     {{
-      "source": "Nome Técnico e Unificado", 
+      "source": "Nome Técnico", 
       "source_type": "TIPO", 
-      "source_desc": "Breve resumo sobre esta entidade neste contexto...",
-      "target": "Nome Técnico ou Valor Crucial", 
+      "source_desc": "Descrição detalhada e contextualizada (mínimo 2 frases)...",
+      "source_attributes": {{ "atributo1": "valor", "atributo2": "valor" }},
+      "target": "Nome Técnico ou Valor", 
       "target_type": "TIPO", 
-      "target_desc": "Breve resumo construtor do papel dessa entidade...",
+      "target_desc": "Descrição detalhada e contextualizada (mínimo 2 frases)...",
+      "target_attributes": {{ "atributo1": "valor", "atributo2": "valor" }},
       "relation": "verbo_infinitivo"
     }}
   ]
@@ -227,6 +234,12 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
             target_type = str(t.get("target_type", "")).strip().upper()
             source_desc = str(t.get("source_desc", "")).strip()
             target_desc = str(t.get("target_desc", "")).strip()
+            source_attrs = t.get("source_attributes", {})
+            target_attrs = t.get("target_attributes", {})
+
+            # Ensure attributes are dicts
+            if not isinstance(source_attrs, dict): source_attrs = {}
+            if not isinstance(target_attrs, dict): target_attrs = {}
 
             # Map types
             source_type = TYPE_MAPPING.get(source_type, source_type)
@@ -282,9 +295,11 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
                 "source": source,
                 "source_type": source_type,
                 "source_desc": source_desc,
+                "source_attributes": source_attrs,
                 "target": target,
                 "target_type": target_type,
                 "target_desc": target_desc,
+                "target_attributes": target_attrs,
                 "relation": relation
             })
 
