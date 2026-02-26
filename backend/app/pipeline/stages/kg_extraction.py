@@ -115,7 +115,7 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
                         "role": "system",
                         "content": (
                             "Você é um extrator preciso de Grafos de Conhecimento. "
-                            "Retorne SEMPRE e APENAS uma lista JSON válida. Nenhum texto antes ou depois. "
+                            "Retorne SEMPRE e APENAS uma lista JSON válida ou objeto com chave 'triples'. "
                             "Se não houver nada para extrair, retorne []."
                         )
                     },
@@ -138,8 +138,9 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
                         raw_triples = content[key]
                         break
                 if not raw_triples:
+                    # Check if any value is a list of triples
                     for val in content.values():
-                        if isinstance(val, list):
+                        if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict) and "source" in val[0]:
                             raw_triples = val
                             break
 
@@ -171,14 +172,49 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
             # Single words that are meaningless as entities
             "dados", "informação", "texto", "arquivo", "documento",
             "conteúdo", "resultado", "valor", "item", "elemento",
+            "página", "tabela", "figura", "imagem", "anexo"
         }
         VAGUE_RELATIONS = {
             "está_relacionado_a", "é_associado_com", "relaciona_se",
             "tem_relação", "possui_relação", "faz_parte", "integra",
+            "contém", "inclui", "tem"
         }
 
         seen = set()
         validated = []
+
+        # Type mapping for internal consistency (matching ontology.py)
+        TYPE_MAPPING = {
+            # ORGANIZACAO
+            "EMPRESA": "ORGANIZACAO", "INSTITUICAO": "ORGANIZACAO", "ORGAO": "ORGANIZACAO",
+            "SECRETARIA": "ORGANIZACAO", "SETOR": "ORGANIZACAO", "DIVISAO": "ORGANIZACAO",
+            "ENTIDADE": "ORGANIZACAO", "GERENCIA": "ORGANIZACAO", "MINISTERIO": "ORGANIZACAO",
+            "DEPARTAMENTO": "ORGANIZACAO", "FUNDACAO": "ORGANIZACAO",
+            
+            # PESSOA
+            "AUTOR": "PESSOA", "ESPECIALISTA": "PESSOA", "AGENTE": "PESSOA",
+            "INDIVIDUO": "PESSOA", "PESQUISADOR": "PESSOA",
+            
+            # LOCALIDADE
+            "CIDADE": "LOCALIDADE", "ESTADO": "LOCALIDADE", "PAIS": "LOCALIDADE",
+            "REGIAO": "LOCALIDADE",
+            
+            # TEMPO
+            "DATA": "TEMPO", "ANO": "TEMPO", "PERIODO": "TEMPO",
+            "MARCO_TEMPORAL": "TEMPO", "EPOCA": "TEMPO",
+            
+            # CONCEITO
+            "DEFINICAO": "CONCEITO", "TERMO": "CONCEITO", "CONCEITO_ECONOMICO": "CONCEITO",
+            "FENOMENO": "CONCEITO", "IDEIA": "CONCEITO",
+            
+            # METODOLOGIA
+            "METODO": "METODOLOGIA", "TECNICA": "METODOLOGIA", "PROCESSO": "METODOLOGIA",
+            "ABORDAGEM": "METODOLOGIA", "PRATICA": "METODOLOGIA",
+            
+            # INDICADOR
+            "INDICADOR_ECONOMICO": "INDICADOR", "METRICA": "INDICADOR",
+            "VARIAVEL": "INDICADOR", "DADO": "INDICADOR", "INFORMAÇÃO": "INDICADOR"
+        }
 
         for t in triples:
             if not isinstance(t, dict):
@@ -192,6 +228,10 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
             source_desc = str(t.get("source_desc", "")).strip()
             target_desc = str(t.get("target_desc", "")).strip()
 
+            # Map types
+            source_type = TYPE_MAPPING.get(source_type, source_type)
+            target_type = TYPE_MAPPING.get(target_type, target_type)
+
             # Required fields check
             if not source or not target or not relation:
                 continue
@@ -200,20 +240,14 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
             if source.lower() == target.lower():
                 continue
 
-            # Entity quality check: no pure numbers, too short, or banned words
+            # Entity quality check
             if self._is_bad_entity(source, BANNED_PATTERNS):
-                # Don't throw away dates/years completely if user specifically asked for them.
-                # However we rely on the LLM to structure them with a solid prefix/suffix 
-                # instead of just "1994". E.g. "Ano 1994". This check is a soft guard.
-                logger.debug(f"Rejected entity (source): '{source}'")
                 continue
             if self._is_bad_entity(target, BANNED_PATTERNS):
-                logger.debug(f"Rejected entity (target): '{target}'")
                 continue
 
             # Vague relation check
             if relation in VAGUE_RELATIONS:
-                logger.debug(f"Rejected vague relation: '{relation}'")
                 continue
 
             # Type validation with fuzzy matching
@@ -226,16 +260,12 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
                     if stype in valid_types:
                         return stype
                     
-                    # Attempt fuzzy match if not exact (lower threshold slightly for more flexibility)
+                    # Attempt fuzzy match
                     match = process.extractOne(stype, list(valid_types), scorer=fuzz.token_set_ratio)
-                    if match and match[1] > 70: 
+                    if match and match[1] > 80: 
                         return match[0]
                     
-                    # Try to map to "CONCEITO" or "DADO" if they exist as common catch-alls
-                    for fallback in ["CONCEITO", "DEFINICAO", "INSTANCIA", "OUTRO"]:
-                        if fallback in valid_types:
-                            return fallback
-                            
+                    # Try to map to "CONCEITO" if it exists
                     if "CONCEITO" in valid_types: return "CONCEITO"
                     return list(valid_types)[0] if valid_types else "ENTIDADE"
 
@@ -263,8 +293,8 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
     @staticmethod
     def _is_bad_entity(name: str, banned: set) -> bool:
         """Returns True if entity name is noise (should be rejected)."""
-        # Pure numbers are noise (years, IDs)
-        if name.isdigit():
+        # Pure numbers are noise unless they looks like years/dates and we want them
+        if name.isdigit() and len(name) != 4: # Keep years like 1994, drop others
             return True
         # Very short names (1-2 chars)
         if len(name) <= 2:
@@ -272,26 +302,30 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
         # File path patterns
         if '/' in name or '\\' in name or name.endswith(('.pdf', '.csv', '.docx', '.txt')):
             return True
-        # Banned generic words (case-insensitive, single word check)
+        # Banned generic words
         if name.lower().strip() in banned:
             return True
         return False
 
     def _parse_json(self, text: str) -> Any:
-        """Robustly parses JSON from LLM text output."""
+        """Robustly parses JSON from LLM text output, handling reasoning blocks."""
+        import re
         text = text.strip()
         if not text:
             logger.error("LLM returned empty response.")
             return []
 
-        # Direct parse
+        # 1. Remove reasoning blocks
+        text = re.sub(r'<thought>.*?</thought>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = text.strip()
+
+        # 2. Direct parse
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
 
-        # Strip markdown code fences
-        import re
+        # 3. Strip markdown code fences
         json_match = re.search(r'```(?:json)?\s*([\[\{].*?[\]\}])\s*```', text, re.DOTALL)
         if json_match:
             try:
@@ -299,18 +333,24 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
             except json.JSONDecodeError:
                 pass
 
-        # Last resort: extract outermost [ ] or { }
+        # 4. Extract outermost [ ] or { }
         start_candidates = [idx for idx in [text.find('['), text.find('{')] if idx != -1]
         end_candidates = [idx for idx in [text.rfind(']'), text.rfind('}')] if idx != -1]
 
-        start_idx = min(start_candidates) if start_candidates else None
-        end_idx = max(end_candidates) if end_candidates else None
-
-        if start_idx is not None and end_idx is not None and end_idx > start_idx:
-            try:
-                return json.loads(text[start_idx:end_idx + 1])
-            except json.JSONDecodeError:
-                pass
+        if start_candidates and end_candidates:
+            start_idx = min(start_candidates)
+            end_idx = max(end_candidates)
+            if end_idx > start_idx:
+                try:
+                    return json.loads(text[start_idx:end_idx + 1])
+                except json.JSONDecodeError:
+                    # Try smaller blocks if nested
+                    blocks = re.findall(r'[\[\{].*?[\]\}]', text, re.DOTALL)
+                    for b in reversed(blocks):
+                        try:
+                            return json.loads(b)
+                        except:
+                            continue
 
         logger.error(f"Failed to parse JSON from response: {text[:300]}...")
         return []
