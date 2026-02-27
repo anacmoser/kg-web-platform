@@ -1,37 +1,41 @@
-from flask import Blueprint, jsonify
+from fastapi import APIRouter, HTTPException, status
 from app.pipeline.orchestrator import orchestrator
+from fastapi.responses import JSONResponse
 
-bp = Blueprint("graphs", __name__)
+router = APIRouter()
 
-@bp.route("/<job_id>", methods=["GET"])
-def get_graph(job_id):
+@router.get("/{job_id}")
+def get_graph(job_id: str):
     """
     Get graph data for a completed job in Cytoscape.js format.
     """
     job_status = orchestrator.get_job_status(job_id)
     
     if job_status.get("status") == "not_found":
-        return jsonify({"error": "Job not found"}), 404
+        raise HTTPException(status_code=404, detail="Job not found")
     
     if job_status.get("status") != "completed":
-        return jsonify({
-            "error": "Graph not ready",
-            "status": job_status.get("status"),
-            "progress": job_status.get("progress", 0)
-        }), 202
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={
+                "error": "Graph not ready",
+                "status": job_status.get("status"),
+                "progress": job_status.get("progress", 0)
+            }
+        )
     
     # Get serialized graph data
     results = job_status.get("results", {})
     cytoscape_data = results.get("cytoscape", {"elements": {"nodes": [], "edges": []}})
     graph_stats = results.get("graph_stats", {})
     
-    return jsonify({
+    return {
         "job_id": job_id,
         "graph": cytoscape_data,
         "stats": graph_stats
-    })
+    }
 
-@bp.route("/", methods=["GET"])
+@router.get("/")
 def list_jobs():
     """
     List all persisted jobs with metadata.
@@ -64,6 +68,6 @@ def list_jobs():
                     
         # Sort by date desc
         jobs.sort(key=lambda x: x["date"], reverse=True)
-        return jsonify(jobs)
+        return jobs
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))

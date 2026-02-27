@@ -1,9 +1,10 @@
 from typing import List, Dict, Any
 import json
-from openai import OpenAI
 from app.config import settings
+from app.utils import retry_with_exponential_backoff
 import logging
 import httpx
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -90,16 +91,21 @@ TEXTO PARA ANÁLISE:
 
         logger.info(f"Generating ontology using {self.model}...")
 
-        try:
-            # Use json_object format if supported by newer models, but keep parsing robust
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Você é um arquiteto de ontologias especialista em extração de Grafos de Conhecimento Científico. Responda apenas com o JSON da ontologia."},
-                    {"role": "user", "content": prompt}
-                ],
+        @retry_with_exponential_backoff()
+        def _call_llm(messages, model):
+            return self.client.chat.completions.create(
+                model=model,
+                messages=messages,
                 temperature=0.0
             )
+
+        try:
+            # Use json_object format if supported by newer models, but keep parsing robust
+            messages = [
+                {"role": "system", "content": "Você é um arquiteto de ontologias especialista em extração de Grafos de Conhecimento Científico. Responda apenas com o JSON da ontologia."},
+                {"role": "user", "content": prompt}
+            ]
+            response = _call_llm(messages, self.model)
 
             raw_content = response.choices[0].message.content or ""
             ontology = self._parse_json(raw_content)

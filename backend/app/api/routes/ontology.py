@@ -1,17 +1,17 @@
-from flask import Blueprint, jsonify
+from fastapi import APIRouter, HTTPException
 from app.pipeline.orchestrator import orchestrator
 
-bp = Blueprint("ontology", __name__)
+router = APIRouter()
 
-@bp.route("/<job_id>", methods=["GET"])
-def get_ontology(job_id):
+@router.get("/{job_id}")
+def get_ontology(job_id: str):
     """
     Get ontology data for a job.
     """
     job_status = orchestrator.get_job_status(job_id)
     
     if job_status.get("status") == "not_found":
-        return jsonify({"error": "Job not found"}), 404
+        raise HTTPException(status_code=404, detail="Job not found")
     
     # Ontology is available after the ontology stage completes
     results = job_status.get("results", {})
@@ -35,10 +35,9 @@ def get_ontology(job_id):
         relation_copy["count"] = relation_types.get(relation.get("label"), 0)
         relations_with_counts.append(relation_copy)
     
-    return jsonify({
+    return {
         "job_id": job_id,
         "status": job_status.get("status"),
         "entities": entities_with_counts,
         "relations": relations_with_counts
-    })
-
+    }

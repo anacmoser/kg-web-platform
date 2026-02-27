@@ -11,7 +11,6 @@ const UploadPage = () => {
     const [jobStatus, setJobStatus] = useState(null);
     const [selectedFilenames, setSelectedFilenames] = useState([]);
     const [isDragging, setIsDragging] = useState(false);
-    const [analyzeImages, setAnalyzeImages] = useState(false);
     const [userInstructions, setUserInstructions] = useState('');
 
     useEffect(() => {
@@ -121,7 +120,7 @@ const UploadPage = () => {
             // Based on previous edits, the orchestrator needs config in start_job.
             // So we send it here if the backend route supports it.
             const result = await api.startPipeline(selectedFilenames, {
-                analyze_images: analyzeImages,
+                analyze_images: true,
                 user_instructions: userInstructions
             });
             setJobId(result.job_id);
@@ -304,20 +303,7 @@ const UploadPage = () => {
                     <div className="sticky top-28 space-y-6">
                         {/* Botão de Extração */}
                         <div className="p-2 bg-white rounded-[32px] shadow-premium border border-slate-100">
-                            <div className="flex items-center space-x-2 mb-4 px-4 pt-2">
-                                <input
-                                    type="checkbox"
-                                    id="analyzeImages"
-                                    checked={analyzeImages}
-                                    onChange={(e) => setAnalyzeImages(e.target.checked)}
-                                    className="w-4 h-4 text-brand-primary border-slate-300 rounded focus:ring-brand-primary cursor-pointer"
-                                />
-                                <label htmlFor="analyzeImages" className="text-sm font-bold text-slate-600 select-none cursor-pointer hover:text-brand-primary transition-colors">
-                                    Processar Imagens e Gráficos (IA Vision)
-                                </label>
-                            </div>
-
-                            <div className="px-4 pb-4">
+                            <div className="px-4 pb-4 pt-4">
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Instruções de Mapeamento (Opcional)</label>
                                 <textarea
                                     value={userInstructions}

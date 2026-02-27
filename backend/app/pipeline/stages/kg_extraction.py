@@ -1,9 +1,12 @@
 from typing import List, Dict, Any
 import json
-from openai import OpenAI
-from app.config import settings
 import logging
 import httpx
+import chromadb
+from pathlib import Path
+from openai import OpenAI
+from app.config import settings, SemanticNodeType
+from app.utils import retry_with_exponential_backoff, make_entity_id
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,83 @@ class KGExtractor:
                 raise
 
         self.model = settings.OPENAI_MODEL
+        
+        # ChromaDB for semantic embeddings
+        self.chroma_client = chromadb.PersistentClient(path=str(settings.CHROMA_PATH))
+        self.semantic_collection = self.chroma_client.get_or_create_collection(
+            name=settings.COLLECTION_SEMANTIC_NAME,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def store_entities(self, triples: List[Dict[str, Any]]):
+        """
+        Extracts unique entities from triples and stores their enriched context in ChromaDB.
+        """
+        if not triples:
+            return
+
+        entities = {} # entity_id -> entity_data
+        
+        for t in triples:
+            # Process Source
+            s_name = t.get("source")
+            s_type = t.get("source_type", "UNKNOWN")
+            s_id = make_entity_id(s_type, s_name)
+            
+            if s_id not in entities:
+                entities[s_id] = {
+                    "name": s_name,
+                    "type": s_type,
+                    "desc": t.get("source_desc", ""),
+                    "attributes": t.get("source_attributes", {}),
+                    "rels": []
+                }
+            
+            # Process Target
+            t_name = t.get("target")
+            t_type = t.get("target_type", "UNKNOWN")
+            t_id = make_entity_id(t_type, t_name)
+            
+            if t_id not in entities:
+                entities[t_id] = {
+                    "name": t_name,
+                    "type": t_type,
+                    "desc": t.get("target_desc", ""),
+                    "attributes": t.get("target_attributes", {}),
+                    "rels": []
+                }
+            
+            # Add relationship info to both (for context)
+            rel = t.get("relation", "relacionado_com")
+            entities[s_id]["rels"].append(f"{rel} -> {t_name}")
+            entities[t_id]["rels"].append(f"alvo de {rel} por {s_name}")
+
+        # Upsert to ChromaDB
+        for eid, info in entities.items():
+            # Build rich contextual text
+            attrs_text = "; ".join(f"{k}={v}" for k, v in info["attributes"].items())
+            rels_text = "; ".join(info["rels"][:10]) # Cap relations for context length
+            
+            full_context = (
+                f"Entidade: {info['name']}\n"
+                f"Tipo: {info['type']}\n"
+                f"Descrição: {info['desc']}\n"
+                f"Atributos: {attrs_text}\n"
+                f"Relações: {rels_text}"
+            ).strip()
+
+            self.semantic_collection.upsert(
+                ids=[eid],
+                documents=[full_context],
+                metadatas=[{
+                    "node_type": SemanticNodeType["ENTITY"],
+                    "entity_id": eid,
+                    "name": info["name"],
+                    "type": info["type"]
+                }]
+            )
+        
+        logger.info(f"Stored {len(entities)} unique entities in semantic collection.")
 
     def _build_prompt(self, chunk: Dict[str, Any], ontology: Dict[str, Any], user_instructions: str) -> str:
         entities_str = "\n".join(
@@ -114,22 +194,27 @@ RETORNE APENAS JSON SEGUINDO ESTE MODELO EXATO:
         # Upgrade model if custom instructions are provided to guarantee adherence
         processing_model = "gpt-4o" if user_instructions else self.model
 
-        try:
-            response = self.client.chat.completions.create(
-                model=processing_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Você é um extrator preciso de Grafos de Conhecimento. "
-                            "Retorne SEMPRE e APENAS uma lista JSON válida ou objeto com chave 'triples'. "
-                            "Se não houver nada para extrair, retorne []."
-                        )
-                    },
-                    {"role": "user", "content": prompt}
-                ],
+        @retry_with_exponential_backoff()
+        def _call_llm(messages, model):
+            return self.client.chat.completions.create(
+                model=model,
+                messages=messages,
                 temperature=0.0
             )
+
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Você é um extrator preciso de Grafos de Conhecimento. "
+                        "Retorne SEMPRE e APENAS uma lista JSON válida ou objeto com chave 'triples'. "
+                        "Se não houver nada para extrair, retorne []."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ]
+            response = _call_llm(messages, processing_model)
 
             raw_content = response.choices[0].message.content or ""
             usage = response.usage.model_dump() if hasattr(response, 'usage') else {}

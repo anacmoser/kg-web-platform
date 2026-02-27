@@ -1,38 +1,40 @@
 # Knowledge Graph Web Platform
 
-A web-based platform for transforming heterogeneous documents (PDF, CSV, DOCX) into interactive knowledge graphs using LLM-powered extraction and semantic analysis.
+Uma plataforma web avançada para transformar documentos heterogêneos (PDF, CSV, DOCX) em grafos de conhecimento interativos usando extração via LLM e análise semântica profunda.
 
-## Features
+## Funcionalidades Principais
 
-- **Document Upload**: Drag-and-drop interface for PDF, CSV, and DOCX files
-- **Intelligent Processing**: 5-stage pipeline with semantic chunking and ontology discovery
-- **Interactive Visualization**: Cytoscape.js-powered graph exploration
-- **Ontology Viewer**: Review and understand extracted entity types and relations
-- **Real-time Progress**: WebSocket-based pipeline status updates
-- **Caching**: 7-day TTL cache for efficient reprocessing
-- **Local TTS (Kokoro-82M)**: Free, high-quality local voice generation (zero cost)
-- **Financial Dashboard**: Track API usage costs and savings in real-time
+- **Nadia**: Chatbot inteligente baseado em LangGraph capaz de usar ferramentas de cálculo, exploração de grafos e busca documental.
+- **GraphRAG Multimodal**: Sistema de recuperação que combina contexto estrutural (chunks) e semântico (entidades) para respostas precisas.
+- **Pipeline de 2 Níveis**:
+  1. **Estrutural**: Extração de texto, tabelas, figuras e seções.
+  2. **Semântico**: Descoberta de entidades, normalização e mapeamento de relações complexas.
+- **Visualização Interativa**: Exploração de grafos via Cytoscape.js e visualizações semânticas.
+- **Local TTS (Kokoro-82M)**: Geração de voz local de alta qualidade e custo zero.
+- **Dashboard Financeiro**: Acompanhamento em tempo real de custos de API e economia gerada.
 
-## Architecture
+## ⚡ Início Rápido (Windows)
 
-### Backend (Flask + Python)
-- **Pipeline Stages**:
-  1. Document Extraction (Docling, python-docx, pandas)
-  2. Semantic Chunking (LangChain SemanticChunker)
-  3. Ontology Discovery (GPT-4o-mini)
-  4. Knowledge Graph Extraction (LLM-guided)
-  5. Graph Building (NetworkX)
+A maneira mais fácil de rodar o projeto completo é usando o script de automação:
 
-- **API Routes**:
-  - `/api/v1/documents/*` - Document management
-  - `/api/v1/pipeline/*` - Pipeline execution and status
-  - `/api/v1/graphs/*` - Graph data retrieval
-  - `/api/v1/ontology/*` - Ontology schema
+1. Clone o repositório.
+2. Execute o comando na raiz do projeto:
+   ```powershell
+   .\start.bat
+   ```
+*O script irá configurar o ambiente virtual (venv), instalar as dependências do Back e Front, e iniciar os dois servidores automaticamente.*
+
+## Arquitetura
+
+### Backend (FastAPI + Python)
+- **Pipelines Coordenados**:
+  - **Pipeline 1 (Estrutural)**: Extração (PyMuPDF), Chunking Semântico, FAISS (Indexação vetorial).
+  - **Pipeline 2 (Semântico)**: Descoberta de Ontologia, Extração de Entidades (LLM), Normalização, Grafo de Relações (NetworkX).
+- **Core Nadia**:
+  - **LangGraph**: Orquestração da Nadia com ferramentas (ReAct).
+  - **Dual ChromaDB**: Coleções separadas para `graphrag_docs` e `graphrag_semantic`.
 
 ### Frontend (React + Vite)
-- **Pages**:
-  - Home - Landing page with navigation
-  - Upload - Document upload and pipeline trigger
   - Visualize - Interactive graph visualization
   - Ontology - Entity and relation type viewer
 
@@ -188,28 +190,26 @@ GET /api/v1/graphs/{job_id}
 GET /api/v1/ontology/{job_id}
 ```
 
-## Project Structure
+## Estrutura do Projeto
 
 ```
 kg-web-platform/
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/          # API endpoints
-│   │   ├── pipeline/stages/     # Processing stages
-│   │   ├── graph/serializers/   # Graph format converters
-│   │   ├── cache/strategies/    # Caching implementations
-│   │   └── config.py            # Configuration
-│   ├── requirements.txt
-│   ├── wsgi.py
-│   └── .env.example
+│   │   ├── api/routes/          # Endpoints FastAPI
+│   │   ├── pipeline/stages/     # Estágios do Pipeline (E1 a E5)
+│   │   ├── graph/               # Gerenciadores de Grafos (Structural/Semantic)
+│   │   ├── config.py            # Configurações globais
+│   │   └── utils.py             # Utilitários e helpers
+│   ├── requirements.txt         # Dependências sincronizadas
+│   └── main.py                  # Ponto de entrada (Uvicorn)
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/               # React pages
-│   │   ├── components/          # Shared components
-│   │   ├── api/                 # API client
-│   │   └── App.jsx
-│   ├── package.json
-│   └── tailwind.config.js
+│   │   ├── pages/               # Páginas React (Upload, Visualização)
+│   │   ├── components/          # Componentes (Nadia, Graph, UI)
+│   │   └── api/                 # Cliente de integração
+│   └── package.json
+├── start.bat                    # Script de automação (Setup + Start)
 └── README.md
 ```
 
@@ -233,6 +233,9 @@ kg-web-platform/
 
 **Problem**: `API requests failing`
 **Solution**: Ensure backend is running on port 5000 and CORS is configured
+
+**Problem**: `Errno 10048 (Address already in use)`
+**Solution**: A previous instance of the server is still running. Use `taskkill /F /IM python.exe` or close other terminal windows to free up port 5000.
 
 ## Development
 
