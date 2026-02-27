@@ -40,7 +40,7 @@ A maneira mais fácil de rodar o projeto completo é usando o script de automaç
 
 ## Prerequisites
 
-- Python 3.9+
+- Python 3.13+
 - Node.js 18+
 - OpenAI API key
 - (Optional) Redis for caching
