@@ -5,13 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List
 from app.config import settings
 
-# Stages
-from app.pipeline.stages.extraction import DocumentExtractor
-from app.pipeline.stages.chunking import ChunkingEngine
+from app.pipeline.stages.structural_extractor import StructuralExtractor
 from app.pipeline.stages.ontology import OntologyBuilder
 from app.pipeline.stages.kg_extraction import KGExtractor
 from app.pipeline.stages.normalization import NormalizationStage
 from app.pipeline.stages.graph_builder import GraphBuilder
+from app.graph.knowledge_graph import KnowledgeGraph
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +22,12 @@ class PipelineOrchestrator:
         self.executor = ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
         
         self._stages_initialized = False
-        self.extractor = None
-        self.chunker = None
+        self.structural_extractor = None
         self.ontology_builder = None
         self.kg_extractor = None
         self.normalizer = None
         self.graph_builder = None
+        self.structural_kg = None
 
     def _ensure_initialized(self):
         if self._stages_initialized:
@@ -36,12 +35,19 @@ class PipelineOrchestrator:
             
         logger.info("Initializing Pipeline Stages (Lazy Load)...")
         # Initialize stages
-        self.extractor = DocumentExtractor()
-        self.chunker = ChunkingEngine()
+        from openai import OpenAI
+        from app.config import settings
+        import httpx
+        
+        http_client = httpx.Client(verify=settings.VERIFY_SSL)
+        api_client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.LLM_BASE_URL, http_client=http_client)
+        
+        self.structural_extractor = StructuralExtractor(api_client)
         self.ontology_builder = OntologyBuilder()
         self.kg_extractor = KGExtractor()
         self.normalizer = NormalizationStage()
         self.graph_builder = GraphBuilder()
+        self.structural_kg = KnowledgeGraph()
         self._stages_initialized = True
         logger.info("Pipeline Stages Initialized.")
 
@@ -129,23 +135,17 @@ class PipelineOrchestrator:
             job["start_time"] = start_time
             job["estimated_total_time"] = 30.0 + (len(doc_paths) * 10.0) # Heuristic
             
-            # STAGE 1: Extraction
-            job["current_stage"] = "extraction"
-            extracted_docs = []
-            for i, path in enumerate(doc_paths):
-                # Update progress within stage
-                job["progress"] = (i / len(doc_paths)) * 0.15
-                res = self.extractor.extract(path, config)
-                extracted_docs.append(res)
-            job["progress"] = 0.15
-            
-            # STAGE 2: Chunking
-            job["current_stage"] = "chunking"
+            # STAGE 1 & 2: Structural Extraction (Vision, PDF Parsing, FAISS, ChromaDB, Struct Graph)
+            job["current_stage"] = "structural_mapping"
             all_chunks = []
-            for i, doc in enumerate(extracted_docs):
-                job["progress"] = 0.15 + (i / len(extracted_docs)) * 0.10
-                chunks = self.chunker.chunk(doc)
+            
+            for i, path in enumerate(doc_paths):
+                job["progress"] = (i / len(doc_paths)) * 0.25
+                # Call the new ingest_pdf which populates Faiss, ChromaDB and Structural Graph
+                chunks = self.structural_extractor.ingest_pdf(path, self.structural_kg)
                 all_chunks.extend(chunks)
+                
+            self.structural_kg.save(settings.STORAGE_DIR)
             job["progress"] = 0.25
             
             # STAGE 3: Ontology
@@ -196,6 +196,11 @@ class PipelineOrchestrator:
             job["results"]["ontology"] = ontology  # Update with pruned version
             
             normalized_triples = self.normalizer.normalize(all_triples)
+            
+            # STAGE 6: Store semantic entities in ChromaDB
+            job["current_stage"] = "semantic_storage"
+            self.kg_extractor.store_entities(normalized_triples)
+            
             job["progress"] = 0.90
             
             # STAGE 6: Graph Building

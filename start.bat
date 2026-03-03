@@ -50,14 +50,14 @@ echo ========================================
 echo   Setup complete! Starting servers...
 echo ========================================
 echo.
-echo Backend: http://localhost:5000
+echo Backend (FastAPI): http://localhost:5000
 echo Frontend: http://localhost:5173
 echo.
 echo Press Ctrl+C to stop both servers
 echo.
 
 REM Start backend in new window
-start "KG Platform - Backend" cmd /k "cd /d %CD%\backend && ..\%VENV_PATH%\Scripts\activate.bat && python wsgi.py"
+start "KG Platform - Backend" cmd /k "cd /d %CD%\backend && ..\%VENV_PATH%\Scripts\activate.bat && python main.py"
 
 REM Wait a bit for backend to start
 timeout /t 3 /nobreak > nul

@@ -1,34 +1,37 @@
-from flask import Blueprint, jsonify, request
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
 from app.pipeline.orchestrator import orchestrator
 from app.config import settings
 from pathlib import Path
 
-bp = Blueprint("pipeline", __name__)
+router = APIRouter()
 
-@bp.route("/start", methods=["POST"])
-def start_pipeline():
-    data = request.get_json()
-    filenames = data.get("filenames", [])
-    
-    if not filenames:
-        return jsonify({"error": "No filenames provided"}), 400
+class PipelineStartRequest(BaseModel):
+    filenames: List[str]
+    config: Optional[Dict[str, Any]] = {}
+
+@router.post("/start", status_code=202)
+def start_pipeline(req: PipelineStartRequest):
+    if not req.filenames:
+        raise HTTPException(status_code=400, detail="No filenames provided")
         
     # Convert filenames to absolute paths
-    doc_paths = [settings.UPLOAD_DIR / f for f in filenames]
+    doc_paths = [settings.UPLOAD_DIR / f for f in req.filenames]
     
     # Start async job
-    job_id = orchestrator.start_job(doc_paths, data.get("config", {}))
+    job_id = orchestrator.start_job(doc_paths, req.config)
     
-    return jsonify({
+    return {
         "job_id": job_id,
         "status": "queued",
         "message": "Pipeline started successfully"
-    }), 202
+    }
 
-@bp.route("/status/<job_id>", methods=["GET"])
-def get_status(job_id):
+@router.get("/status/{job_id}")
+def get_status(job_id: str):
     status = orchestrator.get_job_status(job_id)
     if status.get("status") == "not_found":
-        return jsonify({"error": "Job not found"}), 404
+        raise HTTPException(status_code=404, detail="Job not found")
         
-    return jsonify(status)
+    return status
