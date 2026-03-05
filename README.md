@@ -1,157 +1,249 @@
 # Knowledge Graph Web Platform
 
-Uma plataforma web avançada para transformar documentos heterogêneos (PDF, CSV, DOCX) em grafos de conhecimento interativos usando extração via LLM e análise semântica profunda.
+Uma plataforma web avançada para transformar documentos heterogêneos (PDF, CSV, DOCX) em **grafos de conhecimento interativos**, utilizando extração via LLM, análise semântica profunda e um agente conversacional inteligente.
 
-## Funcionalidades Principais
+---
 
-- **Nadia**: Chatbot inteligente baseado em LangGraph capaz de usar ferramentas de cálculo, exploração de grafos e busca documental.
-- **GraphRAG Multimodal**: Sistema de recuperação que combina contexto estrutural (chunks) e semântico (entidades) para respostas precisas.
-- **Pipeline de 2 Níveis**:
-  1. **Estrutural**: Extração de texto, tabelas, figuras e seções.
-  2. **Semântico**: Descoberta de entidades, normalização e mapeamento de relações complexas.
-- **Visualização Interativa**: Exploração de grafos via Cytoscape.js e visualizações semânticas.
-- **Local TTS (Kokoro-82M)**: Geração de voz local de alta qualidade e custo zero.
-- **Dashboard Financeiro**: Acompanhamento em tempo real de custos de API e economia gerada.
+## ✨ Funcionalidades Principais
+
+| Recurso | Descrição |
+|---|---|
+| 🧠 **Nadia (Agente IA)** | Assistente conversacional baseada em LangGraph (ReAct) especializada em análise de documentos via GraphRAG |
+| 🔍 **GraphRAG Multimodal** | Recuperação que combina contexto estrutural (chunks + FAISS) e semântico (entidades + ChromaDB) |
+| ⚙️ **Pipeline de 2 Estágios** | Extração estrutural (P1) + Extração semântica de entidades via LLM (P2) |
+| 🕸️ **Visualização Interativa** | Exploração de grafos em tempo real via Cytoscape.js com layout, filtros e busca |
+| 🗣️ **TTS Local (Kokoro-82M)** | Síntese de voz de alta qualidade rodando 100% local (sem custo de API) |
+| 💰 **Dashboard Financeiro** | Monitoramento em tempo real de tokens consumidos, custos e economia |
+| 📊 **Ontologia** | Visualizador dos tipos de entidade e relações descobertos automaticamente |
+
+---
 
 ## ⚡ Início Rápido (Windows)
 
-A maneira mais fácil de rodar o projeto completo é usando o script de automação:
+A forma mais fácil de iniciar o projeto é pelo script de automação na raiz:
 
-1. Clone o repositório.
-2. Execute o comando na raiz do projeto:
-   ```powershell
-   .\start.bat
-   ```
-*O script irá configurar o ambiente virtual (venv), instalar as dependências do Back e Front, e iniciar os dois servidores automaticamente.*
+```powershell
+.\start.bat
+```
 
-## Arquitetura
+O script irá automaticamente:
+1. Criar o ambiente virtual Python em `backend\venv` (se não existir)
+2. Instalar todas as dependências backend (`pip install -r requirements.txt`)
+3. Instalar as dependências frontend (`npm install`, se necessário)
+4. Abrir dois terminais separados — um para o backend, outro para o frontend
 
-### Backend (FastAPI + Python)
-- **Pipelines Coordenados**:
-  - **Pipeline 1 (Estrutural)**: Extração (PyMuPDF), Chunking Semântico, FAISS (Indexação vetorial).
-  - **Pipeline 2 (Semântico)**: Descoberta de Ontologia, Extração de Entidades (LLM), Normalização, Grafo de Relações (NetworkX).
-- **Core Nadia**:
-  - **LangGraph**: Orquestração da Nadia com ferramentas (ReAct).
-  - **Dual ChromaDB**: Coleções separadas para `graphrag_docs` e `graphrag_semantic`.
+> **Backend:** `http://localhost:5000`  
+> **Frontend:** `http://localhost:5173`
 
-### Frontend (React + Vite)
-  - Visualize - Interactive graph visualization
-  - Ontology - Entity and relation type viewer
+---
 
-## Prerequisites
+## 🛠️ Instalação Manual
 
-- Python 3.13+
-- Node.js 18+
-- OpenAI API key
-- (Optional) Redis for caching
+### Pré-requisitos
 
-## Installation
+- **Python 3.13+**
+- **Node.js 18+** (com npm)
+- **OpenAI API Key**
+- *(Opcional)* Redis para cache persistente
 
-### 1. Clone the Repository
+### 1. Clone o Repositório
 
 ```bash
+git clone <url-do-repo>
 cd kg-web-platform
 ```
 
-### 2. Backend Setup
+### 2. Configuração do Backend
 
 ```bash
 cd backend
 
-# Create virtual environment
+# Criar e ativar o ambiente virtual
 python -m venv venv
 
-# Activate virtual environment
 # Windows:
 venv\Scripts\activate
-# Linux/Mac:
+# Linux/macOS:
 source venv/bin/activate
 
-# Install dependencies
+# Instalar dependências
 pip install -r requirements.txt
 
-# Create .env file
+# Configurar variáveis de ambiente
 copy .env.example .env
-# Edit .env and add your OPENAI_API_KEY
-
-# Download TTS Models (Required for Local Voice)
-# Download kokoro-v1.0.onnx and voices.bin from releases and place in backend/
+# Edite o arquivo .env e preencha sua OPENAI_API_KEY
 ```
 
-### 3. Frontend Setup
+### 3. Configuração do Frontend
 
 ```bash
 cd frontend
 
-# Install dependencies
+# Instalar dependências
 npm install
-
-# Create .env file (optional)
-echo "VITE_API_URL=http://localhost:5000/api/v1" > .env
 ```
 
-## Running the Application
+---
 
-### Start Backend (Terminal 1)
+## ▶️ Executando a Aplicação
+
+### Backend (Terminal 1)
 
 ```bash
 cd backend
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
-
-# Run Flask server
-python wsgi.py
+venv\Scripts\activate   # Windows
+python main.py
 ```
 
-Backend will run on `http://localhost:5000`
+O servidor FastAPI sobe em `http://localhost:5000`.  
+A documentação interativa da API fica em `http://localhost:5000/docs`.
 
-### Start Frontend (Terminal 2)
+### Frontend (Terminal 2)
 
 ```bash
 cd frontend
-
-# Run Vite dev server
 npm run dev
 ```
 
-Frontend will run on `http://localhost:5173`
+A interface React fica disponível em `http://localhost:5173`.
 
-## Usage
+---
 
-1. **Navigate to** `http://localhost:5173`
-2. **Click "Upload Documents"** and drag-drop PDF/CSV/DOCX files
-3. **Click "Start Knowledge Graph Extraction"** to begin processing
-4. **Monitor progress** in real-time
-5. **Click "View Knowledge Graph"** when complete
-6. **Explore the graph** with zoom, pan, and layout controls
-7. **View ontology** to see entity types and relations
+## 🔧 Configuração
 
-## Configuration
-
-### Environment Variables (backend/.env)
+### Variáveis de Ambiente (`backend/.env`)
 
 ```bash
-# Required
+# ── Obrigatório ──────────────────────────────────────────
 OPENAI_API_KEY=sk-your-key-here
 
-# Optional
+# ── Modelo LLM ───────────────────────────────────────────
+# Modelo padrão: gpt-4o (altere para gpt-4o-mini para menor custo)
+OPENAI_MODEL=gpt-4o
+
+# ── Banco de Dados ────────────────────────────────────────
+# SQLite (padrão, sem instalação necessária):
 DATABASE_URL=sqlite:///./sql_app.db
+# PostgreSQL (opcional):
+# DATABASE_URL=postgresql://user:password@localhost/dbname
+
+# ── Cache (Redis) ─────────────────────────────────────────
+# Se indisponível, o sistema usa cache em memória automaticamente
 REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
+
+# ── Segurança ─────────────────────────────────────────────
+SECRET_KEY=your-secret-key-change-in-production
+
+# ── Pipeline ──────────────────────────────────────────────
 MAX_WORKERS=2
-CACHE_TTL=604800  # 7 days
+CACHE_TTL=604800   # 7 dias (em segundos)
+
+# ── CORS ──────────────────────────────────────────────────
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
-### Lite Mode (Low-Compute)
+### Precificação de Modelos (em `config.py`)
 
-The system automatically falls back to "Lite Mode" when Redis is unavailable:
-- Uses in-memory caching instead of Redis
-- SQLite instead of PostgreSQL
-- Reduced worker count (MAX_WORKERS=2)
+| Modelo | Input (por 1M tokens) | Output (por 1M tokens) |
+|---|---|---|
+| `gpt-4o-mini` | $0.15 | $0.60 |
+| `gpt-4o` | $2.50 | $10.00 |
+| `o1-mini` | $3.00 | $12.00 |
 
-## API Documentation
+### Modo Lite (Sem Redis / Sem PostgreSQL)
 
-### Upload Document
+O sistema detecta automaticamente a indisponibilidade de serviços externos e faz fallback:
+- Cache **em memória** no lugar do Redis
+- **SQLite** no lugar do PostgreSQL
+- `MAX_WORKERS=1` para baixo consumo de recursos
+
+---
+
+## 🏗️ Arquitetura
+
+```
+kg-web-platform/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── nadia_agent.py        # Agente Nadia (LangGraph ReAct)
+│   │   │   ├── rag_system.py         # GraphRAG System (FAISS + ChromaDB)
+│   │   │   ├── usage_tracker.py      # Rastreamento de custos e tokens
+│   │   │   ├── local_audio.py        # TTS local via Kokoro-ONNX
+│   │   │   ├── seade_kb.py           # Base de conhecimento SEADE
+│   │   │   └── routes/
+│   │   │       ├── documents.py      # Upload e gestão de documentos
+│   │   │       ├── pipeline.py       # Disparo e status do pipeline
+│   │   │       ├── graphs.py         # Consulta ao grafo gerado
+│   │   │       ├── ontology.py       # Consulta à ontologia
+│   │   │       └── nadia.py          # Endpoints do chat da Nadia
+│   │   ├── pipeline/
+│   │   │   ├── orchestrator.py       # Coordenador do pipeline completo
+│   │   │   └── stages/
+│   │   │       ├── structural_extractor.py  # E1: Extração estrutural (PyMuPDF)
+│   │   │       ├── chunking.py              # E2: Chunking semântico
+│   │   │       ├── extraction.py            # E3: Indexação FAISS
+│   │   │       ├── ontology.py              # E4: Descoberta de ontologia (LLM)
+│   │   │       ├── kg_extraction.py         # E5: Extração de entidades (LLM)
+│   │   │       ├── normalization.py         # E6: Normalização e deduplicação
+│   │   │       └── graph_builder.py         # E7: Construção do grafo (NetworkX)
+│   │   ├── graph/
+│   │   │   └── serializers/
+│   │   │       └── graph_serializer.py      # Serialização JSON do grafo
+│   │   ├── config.py                 # Configurações e constantes globais
+│   │   └── utils.py                  # Utilitários compartilhados
+│   ├── main.py                       # Ponto de entrada (Uvicorn + FastAPI)
+│   ├── requirements.txt
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── UploadPage.jsx        # Upload e disparo do pipeline
+│   │   │   ├── VisualizePage.jsx     # Visualização interativa do grafo
+│   │   │   └── OntologyPage.jsx      # Visualizador de tipos e relações
+│   │   ├── components/
+│   │   │   ├── SharedComponents.jsx  # Componentes reutilizáveis de UI
+│   │   │   └── JobRepository.jsx     # Listagem de jobs processados
+│   │   ├── api/                      # Camada de integração com o backend
+│   │   ├── App.jsx                   # Roteamento principal (Wouter)
+│   │   └── main.jsx
+│   ├── package.json
+│   └── vite.config.js
+├── start.bat                         # Script de automação (Windows)
+└── README.md
+```
+
+### Stack Tecnológica
+
+**Backend**
+| Camada | Tecnologia |
+|---|---|
+| API REST | FastAPI + Uvicorn |
+| Agente IA | LangGraph (ReAct) + LangChain |
+| LLM | OpenAI (`gpt-4o` por padrão) |
+| Extração de PDFs | PyMuPDF + pymupdf4llm |
+| Busca Vetorial | FAISS (estrutural) + ChromaDB (semântico) |
+| Grafo de Conhecimento | NetworkX |
+| Cache | Redis (ou fallback em memória) |
+| TTS Local | Kokoro-ONNX |
+| Matemática/Finanças | SymPy, NumPy, numpy-financial |
+
+**Frontend**
+| Camada | Tecnologia |
+|---|---|
+| Framework | React 18 + Vite |
+| Roteamento | Wouter |
+| Visualização de Grafos | Cytoscape.js |
+| Estilos | Tailwind CSS |
+| Animações | Framer Motion |
+| Ícones | Lucide React |
+| Data Fetching | SWR |
+
+---
+
+## 📡 API — Endpoints Principais
+
+### Documentos
 
 ```http
 POST /api/v1/documents/upload
@@ -160,146 +252,120 @@ Content-Type: multipart/form-data
 file: <binary>
 ```
 
-### Start Pipeline
+### Pipeline
 
 ```http
 POST /api/v1/pipeline/start
 Content-Type: application/json
 
 {
-  "filenames": ["document.pdf"],
+  "filenames": ["documento.pdf"],
   "config": {}
 }
 ```
-
-### Get Job Status
 
 ```http
 GET /api/v1/pipeline/status/{job_id}
 ```
 
-### Get Graph
+### Grafo e Ontologia
 
 ```http
 GET /api/v1/graphs/{job_id}
-```
-
-### Get Ontology
-
-```http
 GET /api/v1/ontology/{job_id}
 ```
 
-## Estrutura do Projeto
+### Nadia (Chat)
 
-```
-kg-web-platform/
-├── backend/
-│   ├── app/
-│   │   ├── api/routes/          # Endpoints FastAPI
-│   │   ├── pipeline/stages/     # Estágios do Pipeline (E1 a E5)
-│   │   ├── graph/               # Gerenciadores de Grafos (Structural/Semantic)
-│   │   ├── config.py            # Configurações globais
-│   │   └── utils.py             # Utilitários e helpers
-│   ├── requirements.txt         # Dependências sincronizadas
-│   └── main.py                  # Ponto de entrada (Uvicorn)
-├── frontend/
-│   ├── src/
-│   │   ├── pages/               # Páginas React (Upload, Visualização)
-│   │   ├── components/          # Componentes (Nadia, Graph, UI)
-│   │   └── api/                 # Cliente de integração
-│   └── package.json
-├── start.bat                    # Script de automação (Setup + Start)
-└── README.md
+```http
+POST /api/v1/nadia/chat
+Content-Type: application/json
+
+{
+  "message": "Quais são as principais entidades do documento?",
+  "thread_id": "session-123"
+}
 ```
 
-## Troubleshooting
+> A documentação interativa completa está disponível em `http://localhost:5000/docs` enquanto o backend estiver rodando.
 
-### Backend Issues
+---
 
-**Problem**: `ModuleNotFoundError: No module named 'docling'`
-**Solution**: Ensure you've activated the virtual environment and installed requirements
+## 📖 Como Usar
 
-**Problem**: `OpenAI API key not found`
-**Solution**: Add `OPENAI_API_KEY` to `backend/.env`
+1. Acesse **`http://localhost:5173`**
+2. Na **página Upload**, arraste e solte arquivos PDF, CSV ou DOCX
+3. Clique em **"Iniciar Extração"** para disparar o pipeline completo
+4. Acompanhe o **progresso em tempo real** (P1 → P2, estágio por estágio)
+5. Quando concluído, clique em **"Visualizar Grafo"**
+6. Na **página Visualize**, explore o grafo com zoom, pan, filtros por tipo e busca de entidades
+7. Acesse a **página Ontologia** para ver os tipos de entidade e relações descobertos
+8. Use o **chat da Nadia** para fazer perguntas sobre os documentos em linguagem natural
 
-**Problem**: `Redis connection failed`
-**Solution**: Install Redis or let the system use in-memory fallback (Lite Mode)
+---
 
-### Frontend Issues
+## 🚨 Troubleshooting
 
-**Problem**: `Cannot find module 'cytoscape'`
-**Solution**: Run `npm install` in the frontend directory
+### Backend
 
-**Problem**: `API requests failing`
-**Solution**: Ensure backend is running on port 5000 and CORS is configured
+| Problema | Solução |
+|---|---|
+| `OPENAI_API_KEY not found` | Adicione sua chave em `backend/.env` |
+| `Redis connection failed` | Normal — o sistema usa cache em memória automaticamente (Lite Mode) |
+| `Address already in use (Errno 10048)` | Execute `taskkill /F /IM python.exe` para liberar a porta 5000 |
+| `ModuleNotFoundError` | Certifique-se de ter ativado o venv e rodado `pip install -r requirements.txt` |
 
-**Problem**: `Errno 10048 (Address already in use)`
-**Solution**: A previous instance of the server is still running. Use `taskkill /F /IM python.exe` or close other terminal windows to free up port 5000.
+### Frontend
 
-## Development
+| Problema | Solução |
+|---|---|
+| `Cannot find module 'cytoscape'` | Execute `npm install` dentro da pasta `frontend/` |
+| Requisições à API falhando | Confirme que o backend está rodando em `http://localhost:5000` |
+| Página em branco na visualização | Verifique se o pipeline foi concluído com sucesso antes de abrir o grafo |
 
-### Adding a New Pipeline Stage
+---
 
-1. Create stage file in `backend/app/pipeline/stages/`
-2. Implement stage class with `process()` method
-3. Add stage to orchestrator in `orchestrator.py`
-4. Update progress tracking
+## 🔉 TTS Local (Kokoro-82M) — Setup Opcional
 
-### Adding a New API Route
+Para habilitar a voz local da Nadia:
 
-1. Create route file in `backend/app/api/routes/`
-2. Define Blueprint and endpoints
-3. Register blueprint in `app/__init__.py`
+1. Baixe os modelos `kokoro-v1.0.onnx` e `voices.bin` nos [releases do projeto Kokoro](https://github.com/nazdridoy/kokoro-onnx)
+2. Coloque os arquivos dentro de `backend/`
+3. Reinicie o backend
 
-## Testing
+O pacote `kokoro-onnx` já está incluído no `requirements.txt`.
 
-```bash
-# Backend tests
-cd backend
-pytest tests/
+---
 
-# Frontend tests
-cd frontend
-npm run test
-```
+## 🧑‍💻 Desenvolvimento
 
-## Deployment
+### Adicionar um Novo Estágio ao Pipeline
 
-### Docker (Recommended)
+1. Crie o arquivo em `backend/app/pipeline/stages/`
+2. Implemente a classe com um método `process(context) -> context`
+3. Registre o estágio em `backend/app/pipeline/orchestrator.py`
 
-```bash
-docker-compose up -d
-```
+### Adicionar uma Nova Rota de API
 
-### Manual Deployment
+1. Crie o arquivo em `backend/app/api/routes/`
+2. Defina um `APIRouter` e os endpoints
+3. Registre o router no `backend/main.py`
 
-1. Set production environment variables
-2. Build frontend: `npm run build`
-3. Serve frontend static files via Flask or nginx
-4. Use gunicorn for production WSGI server
-5. Set up Redis for production caching
+---
 
-## License
+## 📄 Licença
 
 MIT License
 
-## Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+## 🙏 Créditos e Tecnologias Utilizadas
 
-## Support
-
-For issues and questions, please open a GitHub issue.
-
-## Acknowledgments
-
-- Docling for PDF extraction
-- LangChain for semantic chunking
-- OpenAI for LLM capabilities
-- Cytoscape.js for graph visualization
-- NetworkX for graph operations
+- **[OpenAI](https://openai.com)** — LLM para extração e chat
+- **[LangGraph](https://www.langchain.com/langgraph)** — Orquestração do agente Nadia
+- **[PyMuPDF](https://pymupdf.readthedocs.io)** — Extração de PDFs
+- **[NetworkX](https://networkx.org)** — Estrutura e análise do grafo
+- **[ChromaDB](https://www.trychroma.com)** — Banco vetorial semântico
+- **[FAISS](https://github.com/facebookresearch/faiss)** — Indexação vetorial estrutural
+- **[Cytoscape.js](https://js.cytoscape.org)** — Visualização do grafo
+- **[Kokoro-ONNX](https://github.com/nazdridoy/kokoro-onnx)** — TTS local de alta qualidade
